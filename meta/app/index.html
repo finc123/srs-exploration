@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meta Muse</title>
+<meta name="description" content="Meta Muse launch tracker: web and in-app subscriptions, app downloads and DAU, and Link agentic checkout. Daily and trailing 7-day, refreshed by the meta_muse workflow.">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #f7f7f5; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e3e2dd;
+    --accent: #2f5bd3; --c1: #2f5bd3; --c2: #d9822b; --c3: #2e9e6b; --c4: #a64ca6; --c5: #8a8a84; --warn: #b4541a;
+    --bar-alpha: 0.28;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #151514; --panel: #1f1f1d; --ink: #ecebe6; --muted: #a09f99; --line: #34332f;
+      --accent: #7b9cff; --c1: #7b9cff; --c2: #f0a65a; --c3: #5cc795; --c4: #d38bd3; --c5: #b9b8b1; --warn: #f09a62;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #151514; --panel: #1f1f1d; --ink: #ecebe6; --muted: #a09f99; --line: #34332f;
+    --accent: #7b9cff; --c1: #7b9cff; --c2: #f0a65a; --c3: #5cc795; --c4: #d38bd3; --c5: #b9b8b1; --warn: #f09a62;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  h2 { font-size: 17px; margin: 0; }
+  .sub { color: var(--muted); margin: 0 0 16px; }
+  .fresh { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--muted); font-size: 12px; margin-bottom: 20px; }
+  .fresh b { color: var(--ink); font-weight: 600; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; margin-bottom: 24px; }
+  .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  .tile .lbl { color: var(--muted); font-size: 12px; }
+  .tile .val { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .tile .chg { font-size: 12px; font-variant-numeric: tabular-nums; }
+  .up { color: var(--c3); } .down { color: var(--warn); }
+  section.block { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  .head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+  .note { color: var(--muted); font-size: 12px; margin: 4px 0 10px; }
+  .ctl { display: flex; flex-wrap: wrap; gap: 6px; }
+  .ctl button { border: 1px solid var(--line); background: transparent; color: var(--ink); border-radius: 6px;
+                padding: 3px 9px; font: inherit; font-size: 12px; cursor: pointer; }
+  .ctl button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .chart { position: relative; height: 280px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } .chart { height: 240px; } }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  td.n, th.n { text-align: right; }
+  .scroll { overflow-x: auto; }
+  details.meth { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; margin-bottom: 10px; }
+  details.meth summary { cursor: pointer; font-weight: 600; }
+  details.meth p { margin: 8px 0; }
+  .err { color: var(--warn); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Meta Muse</h1>
+  <p class="sub">Launch tracker for Muse (released <span id="launch"></span>): subscriptions, app usage and agentic checkout.
+    Faint bars are daily values; lines are the trailing 7-day mean (TR7D).</p>
+  <div class="fresh" id="fresh"></div>
+  <div class="tiles" id="tiles"></div>
+  <div id="blocks"></div>
+  <h2 style="margin:28px 0 10px">Methodology</h2>
+  <div id="methodology"></div>
+  <p class="note">Card panels and e-receipts see different halves of the market and are never added together:
+    cards see web sign-ups billed by Meta, e-receipts see App Store and Google Play subscriptions.</p>
+</main>
+<script>
+const SCHEMA_VERSION = 1;
+const DATA_KEY = "internet/meta_muse/meta_muse.json";
+const LOCAL = location.protocol === "file:" || ["localhost", "127.0.0.1"].includes(location.hostname);
+// Local preview: a sibling meta_muse.json if one is served, else the bucket key through the S3 preview proxy.
+const JSON_URLS = LOCAL ? ["meta_muse.json", "http://127.0.0.1:8765/" + DATA_KEY] : [DATA_KEY.split("/").pop()];
+
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const COLORS = () => [css("--c1"), css("--c2"), css("--c3"), css("--c4"), css("--c5")];
+const fmt = (v, d = 0, min = d) => v == null ? "–" : Number(v).toLocaleString(undefined, { maximumFractionDigits: d, minimumFractionDigits: min });
+const fmtBig = v => v == null ? "–" : Math.abs(v) >= 1e6 ? fmt(v / 1e6, 2) + "M" : Math.abs(v) >= 1e4 ? fmt(v / 1e3, 0) + "k" : fmt(v, v < 10 ? 2 : 0, 0);
+const pct = v => v == null ? "–" : (v >= 0 ? "+" : "") + fmt(v * 100, 1) + "%";
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const alpha = (hex, a) => { const h = hex.replace("#", ""); const n = parseInt(h.length === 3 ? h.replace(/./g, "$&$&") : h, 16);
+  return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; };
+
+let LAUNCH = null, SHARE_APPS = ["Muse", "ChatGPT", "Gemini", "Claude", "Grok"];
+const launchLine = {
+  id: "launchLine",
+  afterDatasetsDraw(chart) {
+    const x = chart.scales.x; if (!LAUNCH || !x) return;
+    const i = chart.data.labels.indexOf(LAUNCH); if (i < 0) return;
+    const px = x.getPixelForValue(i), { top, bottom } = chart.chartArea, c = chart.ctx;
+    c.save(); c.strokeStyle = css("--muted"); c.setLineDash([4, 4]); c.beginPath(); c.moveTo(px, top); c.lineTo(px, bottom); c.stroke();
+    c.fillStyle = css("--muted"); c.font = "11px system-ui"; c.fillText(" launch", px, top + 10); c.restore();
+  },
+};
+Chart.register(launchLine);
+
+const charts = {};
+function draw(id, labels, datasets, opts = {}) {
+  charts[id]?.destroy();
+  const grid = css("--line"), ink = css("--muted");
+  charts[id] = new Chart(document.getElementById(id), {
+    data: { labels, datasets },
+    options: {
+      maintainAspectRatio: false, animation: false, interaction: { mode: "index", intersect: false },
+      plugins: { legend: { labels: { color: ink, boxWidth: 12 } },
+                 tooltip: { callbacks: { label: opts.label || (c => `${c.dataset.label}: ${opts.pct ? pct(c.parsed.y) : fmtBig(c.parsed.y)}`),
+                                         footer: opts.footer } } },
+      scales: {
+        x: { ticks: { color: ink, maxTicksLimit: 10, maxRotation: 0 }, grid: { display: false }, stacked: !!opts.stacked },
+        y: { ticks: { color: ink, callback: v => opts.share ? fmt(v * 100, 0) + "%" : opts.pct ? pct(v) : fmtBig(v) },
+             grid: { color: grid }, beginAtZero: true, stacked: !!opts.stacked, max: opts.share ? 1 : undefined },
+      },
+    },
+  });
+}
+
+// Sum `col` over rows matching `where`, per DATE, on the given calendar.
+function series(rows, col, where = {}, dates) {
+  const m = new Map();
+  for (const r of rows) {
+    if (!Object.entries(where).every(([k, v]) => v === "All" || r[k] === v)) continue;
+    if (r[col] == null) { if (!m.has(r.DATE)) m.set(r.DATE, null); continue; }
+    m.set(r.DATE, (m.get(r.DATE) ?? 0) + r[col]);
+  }
+  return dates.map(d => m.has(d) ? m.get(d) : null);
+}
+const datesOf = rows => [...new Set(rows.map(r => r.DATE))].sort();
+const bar = (label, data, color) => ({ type: "bar", label: label + " (daily)", data, backgroundColor: alpha(color, +css("--bar-alpha") || 0.28), borderWidth: 0 });
+// Each line gets its own stack, so on a stacked-bar chart it is drawn at its own value rather than on top of the bars.
+const line = (label, data, color) => ({ type: "line", label: label + " (TR7D)", data, borderColor: color, backgroundColor: color, pointRadius: 0, borderWidth: 2, spanGaps: false, stack: "tr7d:" + label });
+
+function buttons(host, name, options, state, onChange) {
+  const wrap = document.createElement("div"); wrap.className = "ctl"; wrap.setAttribute("role", "group"); wrap.setAttribute("aria-label", name);
+  for (const o of options) {
+    const b = document.createElement("button"); b.textContent = o; b.setAttribute("aria-pressed", String(state[name] === o));
+    b.onclick = () => { state[name] = o; wrap.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", String(x === b))); onChange(); };
+    wrap.appendChild(b);
+  }
+  host.appendChild(wrap);
+}
+
+function block(title, note) {
+  const s = document.createElement("section"); s.className = "block";
+  s.innerHTML = `<div class="head"><h2>${esc(title)}</h2><div class="ctls"></div></div><p class="note">${note}</p>`;
+  document.getElementById("blocks").appendChild(s);
+  return { el: s, ctls: s.querySelector(".ctls") };
+}
+
+const BLOCKS = [
+  { key: "muse_web_daily", render(rows) {
+      const b = block("Muse web subscriptions (card panels)",
+        "Members charged by <code>METAPAY META.COM</code> at the $16 Power / $80 Max web prices. Yodlee feeds 3, 4 and 6, deduplicated.");
+      b.el.insertAdjacentHTML("beforeend", `<div class="chart"><canvas id="c_web"></canvas></div>`);
+      const st = { Plan: "All" }, dates = datesOf(rows), C = COLORS();
+      const go = () => {
+        const plans = st.Plan === "All" ? ["Power", "Max"] : [st.Plan];
+        draw("c_web", dates, [
+          ...plans.map((p, i) => ({ ...bar(p, series(rows, "MEMBERS", { PLAN: p }, dates), C[i]), stack: "d" })),
+          line(st.Plan === "All" ? "Total" : st.Plan, series(rows, "MEMBERS_TR7D", { PLAN: st.Plan }, dates), C[0]),
+        ], { stacked: true });
+      };
+      buttons(b.ctls, "Plan", ["All", "Power", "Max"], st, go); go();
+  } },
+  { key: "muse_inapp_daily", render(rows) {
+      const b = block("Muse in-app subscriptions (e-receipts)",
+        "NIQ App Store / Google Play receipts naming “Muse from Meta”, active mailboxes only. Distinct mailboxes per day; the dark line is the total across both stores.");
+      b.el.insertAdjacentHTML("beforeend", `<div class="grid2"><div class="chart"><canvas id="c_inapp"></canvas></div><div class="chart"><canvas id="c_cancel"></canvas></div></div>`);
+      const st = { Plan: "All" }, dates = datesOf(rows), C = COLORS(), stores = ["Apple", "Google Play"];
+      const go = () => {
+        draw("c_inapp", dates, [
+          ...stores.map((s, i) => ({ ...bar(s, series(rows, "CHARGES", { STORE: s, PLAN: st.Plan }, dates), C[i]), stack: "d" })),
+          ...stores.map((s, i) => line(s + " charges", series(rows, "CHARGES_TR7D", { STORE: s, PLAN: st.Plan }, dates), C[i])),
+          { ...line("Total charges", series(rows, "CHARGES_TR7D", { PLAN: st.Plan }, dates), css("--ink")), borderWidth: 2.5 },
+        ], { stacked: true });
+        draw("c_cancel", dates, [
+          line("Trials", series(rows, "TRIALS_TR7D", { PLAN: st.Plan }, dates), C[2]),
+          line("Cancels", series(rows, "CANCELS_TR7D", { PLAN: st.Plan }, dates), C[3]),
+          bar("Cancels", series(rows, "CANCELS", { PLAN: st.Plan }, dates), C[3]),
+        ]);
+      };
+      buttons(b.ctls, "Plan", ["All", "Power", "Max"], st, go); go();
+  } },
+  { key: "app_usage_daily", render(rows) {
+      const b = block("App downloads and DAU (SensorTower)",
+        "Muse from Meta vs the Meta AI app it sits beside. Muse is live in the US and Canada only, so WW ≈ US + CA.");
+      b.el.insertAdjacentHTML("beforeend", `<div class="chart"><canvas id="c_app"></canvas></div>`);
+      const st = { Metric: "DAU", Country: "US" }, dates = datesOf(rows), C = COLORS();
+      const go = () => {
+        const w = a => ({ APP: a, COUNTRY: st.Country }), m = st.Metric === "DAU" ? "DAU" : "DOWNLOADS";
+        draw("c_app", dates, ["Muse", "Meta AI"].flatMap((a, i) => [
+          bar(a, series(rows, m, w(a), dates), C[i]), line(a, series(rows, m + "_TR7D", w(a), dates), C[i])]));
+      };
+      buttons(b.ctls, "Metric", ["DAU", "Downloads"], st, go); buttons(b.ctls, "Country", ["US", "WW"], st, go); go();
+  } },
+  { key: "app_usage_daily", render(rows) {
+      const b = block("AI assistant share (SensorTower, TR7D)",
+        "Stacked TR7D across Muse, ChatGPT, Gemini, Claude and Grok: bar height is the five-app total, segments are each app. Switch View to Share for the 100% split. Apps are matched by SensorTower product key, not name.");
+      b.el.insertAdjacentHTML("beforeend", `<div class="chart" style="height:320px"><canvas id="c_share"></canvas></div>`);
+      const st = { Metric: "DAU", Country: "US", View: "Level" }, C = COLORS(), apps = SHARE_APPS;
+      const go = () => {
+        const col = (st.Metric === "DAU" ? "DAU" : "DOWNLOADS") + "_TR7D";
+        const all = datesOf(rows);
+        const raw = apps.map(a => series(rows, col, { APP: a, COUNTRY: st.Country }, all));
+        // A day counts only when every comparison app has a value; Muse before launch is a true zero.
+        const keep = all.map((_, j) => apps.every((a, i) => a === "Muse" || raw[i][j] != null));
+        const dates = all.filter((_, j) => keep[j]);
+        const lvl = raw.map(s => s.filter((_, j) => keep[j]).map(v => v ?? 0));
+        const tot = dates.map((_, j) => lvl.reduce((t, s) => t + s[j], 0));
+        const shr = lvl.map(s => s.map((v, j) => tot[j] ? v / tot[j] : null));
+        const view = st.View === "Share" ? shr : lvl;
+        draw("c_share", dates, apps.map((a, i) => ({ type: "bar", label: a, data: view[i], stack: "s", borderWidth: 0,
+                                                     backgroundColor: alpha(C[i], i === 0 ? 0.95 : 0.6) })), {
+          stacked: true, share: st.View === "Share",
+          label: c => `${c.dataset.label}: ${fmtBig(lvl[c.datasetIndex][c.dataIndex])} (${fmt(100 * shr[c.datasetIndex][c.dataIndex], 1)}%)`,
+          footer: items => items.length ? `Total: ${fmtBig(tot[items[0].dataIndex])}` : "",
+        });
+      };
+      buttons(b.ctls, "Metric", ["DAU", "Downloads"], st, go); buttons(b.ctls, "Country", ["US", "WW"], st, go);
+      buttons(b.ctls, "View", ["Level", "Share"], st, go); go();
+  } },
+  { key: "agentic_daily", render(rows, sections) {
+      const b = block("Agentic Checkout to Non-Stripe Merchants",
+        "Muse, GrokBot and Instinct use Stripe Virtual Cards for merchants that do not accept Stripe as a payment processor. Cleveland Research noted that the majority of agentic spend from a card issuer was coming from Muse.");
+      b.el.insertAdjacentHTML("beforeend", `<div class="grid2"><div class="chart"><canvas id="c_ag"></canvas></div><div class="chart"><canvas id="c_ag2"></canvas></div></div>
+        <h2 style="margin:16px 0 6px;font-size:15px">Top merchants, trailing 28 days</h2><div class="scroll"><table id="t_merch"></table></div>`);
+      const dates = datesOf(rows), C = COLORS();
+      draw("c_ag", dates, [bar("Per million", series(rows, "PER_MILLION", {}, dates), C[0]),
+                           line("Per million", series(rows, "PER_MILLION_TR7D", {}, dates), C[0])]);
+      draw("c_ag2", dates, [bar("Agentic txns", series(rows, "TXNS", {}, dates), C[1]),
+                            line("Agentic txns", series(rows, "TXNS_TR7D", {}, dates), C[1]),
+                            line("Shopify-store txns", series(rows, "SHOPIFY_TXNS_TR7D", {}, dates), C[2])]);
+      const m = sections.agentic_merchants || [];
+      document.getElementById("t_merch").innerHTML = `<tr><th>Merchant (descriptor)</th><th class="n">Txns</th><th class="n">Median $</th></tr>` +
+        m.map(r => `<tr><td>${esc(r.MERCHANT)}</td><td class="n">${fmt(r.TXNS)}</td><td class="n">${fmt(r.MEDIAN_AMOUNT, 2)}</td></tr>`).join("");
+  } },
+];
+
+function renderTiles(summary) {
+  document.getElementById("tiles").innerHTML = summary.map(s => `<div class="tile">
+    <div class="lbl">${esc(s.LABEL)} (TR7D)</div><div class="val">${s.KIND === "share" ? fmt(100 * s.VALUE, 1) + "%" : fmtBig(s.VALUE)}</div>
+    <div class="chg ${s.WOW == null ? "" : s.WOW >= 0 ? "up" : "down"}">${pct(s.WOW)} w/w · ${esc(s.AS_OF ?? "")}</div></div>`).join("");
+}
+
+function renderMethodology(meth) {
+  document.getElementById("methodology").innerHTML = meth.map(m => `<details class="meth"><summary>${esc(m.TITLE)}</summary>
+    <p><b>Source.</b> ${esc(m.SOURCE)}</p>
+    <div class="scroll"><table><tr><th>Filter</th><th>Why</th></tr>${m.FILTERS.map(f => `<tr><td>${esc(f.RULE)}</td><td>${esc(f.WHY)}</td></tr>`).join("")}</table></div>
+    <p><b>Deduplication.</b> ${esc(m.DEDUPE)}</p><p><b>Measure.</b> ${esc(m.MEASURE)}</p><p><b>Lag.</b> ${esc(m.LAG)}</p></details>`).join("");
+}
+
+async function load() {
+  for (const u of JSON_URLS) {
+    try { const r = await fetch(u, { cache: "no-store" }); if (r.ok) return await r.json(); } catch (e) { /* try next */ }
+  }
+  throw new Error("could not load " + JSON_URLS.join(" or "));
+}
+
+load().then(p => {
+  if (p.schema_version > SCHEMA_VERSION) {
+    document.getElementById("blocks").innerHTML = `<p class="err">This report needs a newer page (data schema ${p.schema_version}).</p>`; return;
+  }
+  LAUNCH = p.launch_date;
+  if (p.share_apps) SHARE_APPS = p.share_apps;
+  document.getElementById("launch").textContent = p.launch_date;
+  document.getElementById("fresh").innerHTML = p.freshness.map(f => `<span>${esc(f.DATASET)} through <b>${esc(f.MAX_DATE)}</b></span>`).join("") +
+    `<span>Built ${esc(p.generated_at.slice(0, 16).replace("T", " "))} UTC</span>`;
+  renderTiles(p.summary);
+  for (const b of BLOCKS) if (p.sections[b.key]) b.render(p.sections[b.key], p.sections);
+  renderMethodology(p.methodology);
+}).catch(e => { document.getElementById("blocks").innerHTML = `<p class="err">${esc(e.message)}</p>`; });
+</script>
+</body>
+</html>
