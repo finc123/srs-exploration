@@ -1,0 +1,18 @@
+[project]
+name = "exploration"
+version = "0.1.0"
+description = "Shared environment for research notebooks (carmax, meta, roblox, ...)"
+requires-python = ">=3.12"
+dependencies = [
+    "snowflake-connector-python[pandas,secure-local-storage]>=4.7",  # secure-local-storage caches the OAuth token
+    "pandas>=2.2",
+    "matplotlib>=3.9",
+    "jinja2>=3.1",      # pandas Styler
+    "ipykernel>=6.29",
+    "jupyterlab>=4.2",
+    "scipy>=1.18.1",
+    "scikit-learn>=1.9.1",
+]
+
+[tool.uv]
+package = false

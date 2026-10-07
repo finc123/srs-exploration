@@ -1,0 +1,22 @@
+# Data files: keep locally, never commit
+*.csv
+*.xlsx
+*.xls
+*.parquet
+*.feather
+*.pkl
+**/datapull/raw/
+**/datapull/output/
+
+# Python / environments
+.venv/
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+# Local Claude Code settings
+**/.claude/settings.local.json
+
+# OS / editor
+.DS_Store
+Thumbs.db

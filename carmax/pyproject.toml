@@ -1,0 +1,18 @@
+[project]
+name = "carmax-investigations"
+version = "0.1.0"
+description = "CarMax research notebooks (ABS loan-level, alt-data)"
+requires-python = ">=3.12"
+dependencies = [
+    "snowflake-connector-python[pandas]>=3.12",
+    "pandas>=2.2",
+    "matplotlib>=3.9",
+    "jinja2>=3.1",      # pandas Styler (fill-rate table)
+    "ipykernel>=6.29",
+    "jupyterlab>=4.2",
+    "scipy>=1.18.1",
+    "scikit-learn>=1.9.1",
+]
+
+[tool.uv]
+package = false
