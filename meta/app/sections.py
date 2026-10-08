@@ -6,8 +6,12 @@ Two layers, mirroring the planned monorepo workflow (`workflows/jobs/meta/meta_m
    will become `srs_slice.meta.*` tables:
      card_txns     one row per matched card/bank transaction (signal = muse_web | agentic)
      panel_totals  distinct transactions per source per day (denominator for per-million)
+     member_tenure first / last transaction day per web Muse payer per source (panel presence)
      niq_receipts  one row per Muse e-receipt line item
      app_usage     SensorTower downloads / DAU per app x country x day
+     benchmark     SensorTower US downloads per benchmark app x day, day 0 to +120 (+ Clubhouse export)
+     ad_spend      Pathmatics Muse digital ad spend per country x publisher x day
+     web_traffic   SimilarWeb muse.ai visits per country x day (snapshot fallback)
    Card loads run one query per source per day (multi-day ILIKE scans on the
    279 tables time out) and are cached locally by build_json.py.
 
@@ -24,6 +28,8 @@ drift from the code.
 
 from __future__ import annotations
 
+from datetime import date, timedelta
+
 # ---------------------------------------------------------------------------
 # Windows and lags
 # ---------------------------------------------------------------------------
@@ -35,6 +41,9 @@ CARD_LAG_DAYS = 5              # Yodlee/279 day volume is still filling 5-10 day
 NIQ_LAG_DAYS = 1               # NIQ is complete through yesterday
 REFRESH_DAYS = 14              # card days newer than this are re-pulled every run
 TR_DAYS = 7                    # trailing window for every *_TR7D column
+SUB_GAP_DAYS = 35              # card subs: a payment after this many days without one is a new subscription,
+                               # and no payment for this long after the last one is a lapse
+TENURE_DAYS = 35               # card subs: a gross add needs the member in the panel this long before paying
 
 MUSE_KEY = "6aa0b99dd70c1a09e42dc613"     # SensorTower "Muse from Meta" (com.facebook.aura)
 META_AI_KEY = "613aafdee8b8ad2c7f063b8e"  # SensorTower "Meta AI" (com.facebook.stella)
@@ -52,6 +61,21 @@ APP_KEYS = {
 }
 # The AI-assistant set for the share chart (Meta AI is shown beside Muse, not in the share set).
 SHARE_APPS = ["Muse", "ChatGPT", "Gemini", "Claude", "Grok"]
+
+# Launch benchmark: US downloads from each app's day 0, by key (verified 2026-10-08; CORE
+# history starts on launch day for each). Clubhouse is not in CORE: it comes from a
+# SensorTower portal export (BENCHMARK_SNAPSHOT), with day 0 at its viral breakout rather
+# than its spring-2020 invite-only release.
+BENCHMARK_KEYS = {
+    "Muse": MUSE_KEY,
+    "Sora": "68dc489f4e04a24f7d0d0aeb",
+    "Threads": "64a72c98ad4adb0e06dbc506",
+    "ChatGPT": APP_KEYS["ChatGPT"],
+    "Claude": APP_KEYS["Claude"],
+}
+BENCHMARK_DAYS = 120
+BENCHMARK_SNAPSHOT = "benchmark_snapshot.xlsx"
+BENCHMARK_DAY0 = {"Clubhouse": "2020-12-15"}   # first day of the sustained jump in US downloads (15k -> 25k)
 
 # Web price ladder (US$, pre-tax list $16 / $80); upper bounds allow for sales tax,
 # lower bounds sit just under list so off-price Meta charges (e.g. $15.90) are excluded.
@@ -167,6 +191,22 @@ def card_rows_sql(src: dict, start: str, end: str) -> str:
     """
 
 
+# Panel presence for web Muse payers: first and last transaction (any merchant) per member per source,
+# from early enough that the TENURE_DAYS test is decidable for every payment in the card window.
+TENURE_START = (date.fromisoformat(CARD_START) - timedelta(days=TENURE_DAYS)).isoformat()
+
+
+def member_tenure_sql(src: dict, members: list[str], end: str) -> str:
+    ids = ", ".join(f"'{m}'" for m in members)
+    return f"""
+        SELECT '{src['name']}' AS source, CAST({src['member']} AS VARCHAR) AS member,
+               MIN({src['date']})::DATE AS first_seen, MAX({src['date']})::DATE AS last_seen
+        FROM {src['table']}
+        WHERE {_window(src, TENURE_START, end)} AND {src['member']} IN ({ids})
+        GROUP BY 1, 2
+    """
+
+
 def panel_total_sql(src: dict, start: str, end: str) -> str:
     return f"""
         SELECT '{src['name']}' AS source, {src['date']}::DATE AS day, COUNT(DISTINCT {src['txn']}) AS total_txn
@@ -209,6 +249,52 @@ APP_USAGE_SQL = f"""
     GROUP BY 1, 2, 3
 """
 
+# One CORE read for the benchmark apps: US, from each app's first download day to +BENCHMARK_DAYS.
+BENCHMARK_SQL = f"""
+    WITH d AS (
+        SELECT date::DATE AS date,
+               CASE unified_product_key {" ".join(f"WHEN '{k}' THEN '{a}'" for a, k in BENCHMARK_KEYS.items())} END AS app,
+               SUM(downloads) AS downloads,
+               NULLIF(SUM(dau), 0) AS dau
+        FROM sensortower.common.core
+        WHERE unified_product_key IN ({", ".join(f"'{k}'" for k in BENCHMARK_KEYS.values())})
+          AND country_code = 'US'
+        GROUP BY 1, 2
+    ), f AS (
+        SELECT app, MIN(date) AS day0 FROM d WHERE downloads > 0 GROUP BY app
+    )
+    SELECT d.date, d.app, d.downloads, d.dau
+    FROM d JOIN f ON f.app = d.app
+    WHERE d.date BETWEEN f.day0 AND DATEADD('day', {BENCHMARK_DAYS}, f.day0)
+"""
+
+# Pathmatics digital ad spend for Muse. US and Canada are the only material regions.
+AD_SPEND_SQL = f"""
+    SELECT date::DATE AS date,
+           CASE region WHEN 'United States' THEN 'US' WHEN 'Canada' THEN 'CA' END AS country,
+           publisher,
+           SUM(spend) AS spend,
+           SUM(ads) AS ads
+    FROM pathmatics.common.digital_ad_spend
+    WHERE advertiser ILIKE 'muse from meta'
+      AND region IN ('United States', 'Canada')
+      AND date >= '{CARD_START}'
+    GROUP BY 1, 2, 3
+"""
+
+# SimilarWeb daily visits. muse.ai was added to the pipeline config on 2026-10-08; until it
+# lands, build_json.py falls back to WEB_TRAFFIC_SNAPSHOT (an MCP pull, same columns).
+WEB_DOMAINS = ["muse.ai"]
+WEB_TRAFFIC_SNAPSHOT = "web_traffic_snapshot.csv"
+WEB_TRAFFIC_SQL = f"""
+    SELECT date::DATE AS date, domain, country, value AS visits
+    FROM similarweb.snowflake_integration.downstream_daily
+    WHERE domain IN ({", ".join(f"'{d}'" for d in WEB_DOMAINS)})
+      AND metric = 'ALL_TRAFFIC_VISITS'
+      AND country IN ('US', 'WW')
+      AND date >= '{CARD_START}'
+"""
+
 # ---------------------------------------------------------------------------
 # SECTIONS (portable SQL). Placeholders filled by build_json.py:
 #   {card_start} {card_through} {niq_through} {app_start} {merch_start}
@@ -217,6 +303,7 @@ APP_USAGE_SQL = f"""
 #   keys      group columns besides DATE (one dense daily series per key combo)
 #   measures  columns that get a *_TR7D twin
 #   fill_zero a missing day means zero (counts from a scan) vs unknown (vendor series)
+#   zero_before_first  (vendor series) days before a key combo's first row are zero, e.g. before an app's launch
 #   start/through  the placeholders bounding the dense calendar
 # ---------------------------------------------------------------------------
 SECTIONS: list[dict] = [
@@ -251,14 +338,17 @@ SECTIONS: list[dict] = [
                  "charges (e.g. $15.90 on 2026-09-11), so the price bucket is what isolates Muse. In-app "
                  "prices ($20 / $100) never bill under this descriptor."),
                 ("Not matched: GOOGLE *FACEBOOK, Apple, PP*METAPLATFOR, FACEBK *",
-                 "Google Play pass-through showed no launch uplift, Apple card descriptors carry no app name, "
+                 "Google Play bills every Meta app as GOOGLE *FACEBOOK, so its small launch uplift cannot be "
+                 "isolated from other Meta subscriptions (investigations/android_crosscheck.ipynb), Apple card "
+                 "descriptors carry no app name, "
                  "and the PayPal / FACEBK forms are ads and Quest. In-app Muse is measured from e-receipts instead."),
             ],
             dedupe="Distinct (member, day, amount, plan): Yodlee pending and posted copies of one charge can "
                    "carry different transaction ids.",
             measure="MEMBERS = distinct panel members charged that day, per plan. TXNS = deduplicated charges. "
-                    "A charge is a new subscription or a monthly renewal; with a 2-week free trial, first "
-                    "charges start about 14 days after sign-up (first seen 2026-09-17).",
+                    "A charge is a new subscription or a monthly renewal. Web Muse first charges appear around "
+                    "2026-09-17, nine days after launch; the cause is not confirmed (possible billing delay, "
+                    "trial or slow web adoption).",
             lag=f"Complete through run date minus {CARD_LAG_DAYS} days; later days are excluded.",
         ),
     ),
@@ -300,6 +390,131 @@ SECTIONS: list[dict] = [
             measure="CHARGES = mailboxes with a paid Muse receipt that day; CANCELS = cancellation notices; "
                     "TRIALS = trial-start receipts.",
             lag=f"Complete through run date minus {NIQ_LAG_DAYS} day.",
+        ),
+    ),
+    dict(
+        key="inapp_flows_daily",
+        title="Muse in-app subscriber flows (e-receipts)",
+        keys=["STORE", "PLAN"], measures=["GROSS_ADDS", "CANCELS", "NET_ADDS"], fill_zero=True,
+        start="card_start", through="niq_through",
+        sql="""
+            WITH r AS (
+                SELECT DISTINCT order_date, mailbox_id, store, plan, kind
+                FROM srs_slice.meta.niq_receipts
+                WHERE order_date BETWEEN '{card_start}' AND '{niq_through}' AND store <> 'Other'
+            ), g AS (
+                SELECT first_day AS day, store, plan, COUNT(*) AS gross_adds
+                FROM (SELECT mailbox_id, store, plan, MIN(order_date) AS first_day
+                      FROM r WHERE kind = 'charge' GROUP BY 1, 2, 3) f
+                GROUP BY 1, 2, 3
+            ), c AS (
+                SELECT order_date AS day, store, plan, COUNT(DISTINCT mailbox_id) AS cancels
+                FROM r WHERE kind = 'cancel' GROUP BY 1, 2, 3
+            )
+            SELECT CAST(COALESCE(g.day, c.day) AS VARCHAR) AS DATE,
+                   COALESCE(g.store, c.store) AS STORE, COALESCE(g.plan, c.plan) AS PLAN,
+                   COALESCE(g.gross_adds, 0) AS GROSS_ADDS,
+                   COALESCE(c.cancels, 0) AS CANCELS,
+                   COALESCE(g.gross_adds, 0) - COALESCE(c.cancels, 0) AS NET_ADDS
+            FROM g FULL OUTER JOIN c ON c.day = g.day AND c.store = g.store AND c.plan = g.plan
+            ORDER BY 1, 2, 3
+        """,
+        methodology=dict(
+            source="The in-app e-receipts above (same filters: active mailboxes, 'Muse from Meta', Apple / "
+                   "Google Play).",
+            filters=[
+                ("Gross add = the day of a mailbox's first charge receipt, per store and plan",
+                 "Every mailbox's first paid Muse receipt is a new subscriber; later charges are renewals. The "
+                 "window starts before launch, so no subscriber predates it."),
+                ("Cancel = a cancellation-confirmation receipt",
+                 "Stores email a confirmation when a user cancels; the plan usually runs to the end of the paid "
+                 "period, so a cancel is a churn notice, not an immediate loss."),
+                ("Trial-start receipts are left out",
+                 "Muse is freemium, trials are not a standard offering, and the few trial receipts were judged "
+                 "noise (team review, 2026-10-07)."),
+            ],
+            dedupe="One first charge per mailbox, store and plan; cancels are distinct mailboxes per day.",
+            measure="GROSS_ADDS = new paying mailboxes that day. CANCELS = cancellation notices. NET_ADDS = "
+                    "GROSS_ADDS - CANCELS. A plan switch counts as a gross add on the new plan. Whether "
+                    "Google Play and Apple both send a receipt for every renewal is under investigation, so "
+                    "renewals are not shown here.",
+            lag=f"Complete through run date minus {NIQ_LAG_DAYS} day.",
+        ),
+    ),
+    dict(
+        key="web_flows_daily",
+        title="Muse web subscriber flows (card panels)",
+        keys=["PLAN"], measures=["GROSS_ADDS", "CANCELS", "NET_ADDS", "RENEWALS", "NEW_TO_PANEL", "PANEL_EXITS"],
+        fill_zero=True, start="card_start", through="card_through",
+        sql=f"""
+            WITH c AS (
+                SELECT DISTINCT member, day, plan
+                FROM srs_slice.meta.card_txns
+                WHERE signal = 'muse_web' AND day BETWEEN '{{card_start}}' AND '{{card_through}}'
+                  AND {bucket_filter_sql()}
+            ), t AS (
+                SELECT member, MIN(first_seen) AS first_seen, MAX(last_seen) AS last_seen
+                FROM srs_slice.meta.member_tenure GROUP BY member
+            ), l AS (
+                SELECT c.member, c.day, c.plan, t.first_seen, t.last_seen,
+                       CASE WHEN LAG(c.day) OVER (PARTITION BY c.member ORDER BY c.day) IS NOT NULL
+                             AND DATEDIFF('day', LAG(c.day) OVER (PARTITION BY c.member ORDER BY c.day), c.day)
+                                 <= {SUB_GAP_DAYS} THEN 1 ELSE 0 END AS is_renewal,
+                       CASE WHEN DATEDIFF('day', t.first_seen, c.day) > {TENURE_DAYS} THEN 1 ELSE 0 END AS is_tenured,
+                       LEAD(c.day) OVER (PARTITION BY c.member ORDER BY c.day) AS next_day
+                FROM c LEFT JOIN t ON t.member = c.member
+            ), ev AS (
+                -- payments: renewal, gross add (tenured member, no payment in the gap), or too new to the panel to tell
+                SELECT day, plan,
+                       CASE WHEN is_renewal = 0 AND is_tenured = 1 THEN 1 ELSE 0 END AS gross_adds,
+                       0 AS cancels,
+                       is_renewal AS renewals,
+                       CASE WHEN is_renewal = 0 AND is_tenured = 0 THEN 1 ELSE 0 END AS new_to_panel,
+                       0 AS panel_exits
+                FROM l
+                UNION ALL
+                -- lapses: no payment within the gap after this one, dated at the end of the gap; a cancellation
+                -- only if the member is still transacting in the panel after that date, else panel attrition
+                SELECT day + {SUB_GAP_DAYS} AS day, plan, 0,
+                       CASE WHEN last_seen > day + {SUB_GAP_DAYS} THEN 1 ELSE 0 END,
+                       0, 0,
+                       CASE WHEN last_seen > day + {SUB_GAP_DAYS} THEN 0 ELSE 1 END
+                FROM l
+                WHERE (next_day IS NULL OR DATEDIFF('day', day, next_day) > {SUB_GAP_DAYS})
+                  AND day + {SUB_GAP_DAYS} <= '{{card_through}}'
+            )
+            SELECT CAST(day AS VARCHAR) AS DATE, plan AS PLAN,
+                   SUM(gross_adds) AS GROSS_ADDS, SUM(cancels) AS CANCELS,
+                   SUM(gross_adds) - SUM(cancels) AS NET_ADDS,
+                   SUM(renewals) AS RENEWALS, SUM(new_to_panel) AS NEW_TO_PANEL, SUM(panel_exits) AS PANEL_EXITS
+            FROM ev GROUP BY 1, 2 ORDER BY 1, 2
+        """,
+        methodology=dict(
+            source="The web Muse card charges above (Yodlee feeds 3, 4 and 6, same descriptor and price filters), "
+                   "plus each charged member's first and last transaction date in the same panels "
+                   "(member_tenure, any merchant).",
+            filters=[
+                (f"Gross add = a payment with no payment in the previous {SUB_GAP_DAYS} days, by a member first "
+                 f"seen in the panel more than {TENURE_DAYS} days earlier",
+                 "Cards have no sign-up event, so a new subscription is a payment after a gap. The tenure test "
+                 "stops an existing subscriber who has just joined the panel from counting as a sign-up; those "
+                 "payments are NEW_TO_PANEL instead."),
+                (f"Cancellation = no payment within {SUB_GAP_DAYS} days of a member's last payment, dated at last "
+                 f"payment + {SUB_GAP_DAYS} days, if the member is still transacting in the panel after that date",
+                 "Monthly plans renew about every 30 days, so a missed renewal means the plan ended. Requiring "
+                 "later panel activity separates Muse churn from panel churn; lapses by members who have left "
+                 "the panel are PANEL_EXITS instead."),
+                (f"Renewal = a payment within {SUB_GAP_DAYS} days of the member's previous payment",
+                 "The sequence is per member across plans, so a Power-to-Max switch counts as a renewal on the "
+                 "new plan, not a gross add."),
+            ],
+            dedupe="Distinct (member, day, plan), as for subscriptions.",
+            measure=f"GROSS_ADDS, CANCELS and NET_ADDS = GROSS_ADDS - CANCELS per day and plan; RENEWALS, "
+                    f"NEW_TO_PANEL and PANEL_EXITS complete the reconciliation (every payment is a gross add, "
+                    f"renewal or new-to-panel; every lapse a cancellation or panel exit). The first web payment "
+                    f"was 2026-09-17, so the first possible cancellation is 2026-10-22.",
+            lag=f"Complete through run date minus {CARD_LAG_DAYS} days; a cancellation appears once its date "
+                f"is inside that window.",
         ),
     ),
     dict(
@@ -353,7 +568,10 @@ SECTIONS: list[dict] = [
                     "(same feeds, same day). Panel coverage still fills in for ~10 days, so the rate is the "
                     "comparable series and raw counts in the latest days run low. PER_MILLION_TR7D is the ratio "
                     "of 7-day sums, not a mean of daily ratios. SHOPIFY_SHARE_TR7D = Shopify-store share of "
-                    "7-day agentic volume.",
+                    "7-day agentic volume. The count is a floor: at merchants that take Stripe directly, an agent "
+                    "purchase carries the merchant's own descriptor and is invisible here; at the top agentic "
+                    "merchants Link-agent rows are under 0.01% of panel transactions (0.5% at Porkbun) since "
+                    "launch (investigations/stripe_vs_link_share.ipynb).",
             lag=f"Complete through run date minus {CARD_LAG_DAYS} days.",
         ),
     ),
@@ -364,6 +582,7 @@ SECTIONS: list[dict] = [
         sql="""
             SELECT merchant AS MERCHANT,
                    COUNT(DISTINCT source || '|' || txn_id) AS TXNS,
+                   COUNT(DISTINCT source || '|' || member) AS CARDHOLDERS,
                    ROUND(MEDIAN(amount), 2) AS MEDIAN_AMOUNT
             FROM srs_slice.meta.card_txns
             WHERE signal = 'agentic' AND merchant IS NOT NULL
@@ -376,15 +595,52 @@ SECTIONS: list[dict] = [
                       "QDI* processor prefix)",
                       "Descriptors truncate merchant names, so this is a label for reading, not an entity match.")],
             dedupe="As above.",
-            measure="A breakdown table rather than a daily series: transactions and median amount per merchant "
-                    "over the 28 days ending at the card complete-through date.",
+            measure="A breakdown table rather than a daily series: transactions, unique cardholders and median "
+                    "amount per merchant over the 28 days ending at the card complete-through date. CARDHOLDERS "
+                    "= distinct panel members (per source); TXNS well above CARDHOLDERS means repeat agent "
+                    "purchases by the same people.",
+            lag=f"Complete through run date minus {CARD_LAG_DAYS} days.",
+        ),
+    ),
+    dict(
+        key="agentic_samples",
+        title="Example agentic-checkout records",
+        keys=None, measures=[], fill_zero=False,
+        sql="""
+            WITH a AS (
+                SELECT day, source, amount, merchant, is_shopify,
+                       REGEXP_REPLACE(description, 'XXXX+[0-9]+', 'XXXX') AS description,
+                       CASE WHEN description ILIKE '%linkagnt*%' THEN 'LINKAGNT*' ELSE 'LINK*' END AS form
+                FROM srs_slice.meta.card_txns
+                WHERE signal = 'agentic' AND merchant IS NOT NULL AND day <= '{card_through}'
+            ), r AS (
+                -- Card panels first: they carry the plain Stripe descriptor, where bank rows wrap it in
+                -- 'DEBIT CARD PURCHASE AT ... CARD#' text.
+                SELECT a.*, ROW_NUMBER() OVER (PARTITION BY form
+                                               ORDER BY CASE WHEN source LIKE '% card' THEN 0 ELSE 1 END,
+                                                        day DESC, description) AS rn
+                FROM a
+                WHERE (form = 'LINKAGNT*' AND day < '2026-09-23') OR (form = 'LINK*' AND day >= '2026-09-23')
+            )
+            SELECT CAST(day AS VARCHAR) AS DATE, form AS FORM, description AS DESCRIPTION,
+                   amount AS AMOUNT, merchant AS MERCHANT, is_shopify AS IS_SHOPIFY
+            FROM r WHERE rn = 1 ORDER BY 1
+        """,
+        methodology=dict(
+            source="The agentic transactions above.",
+            filters=[("The latest LINKAGNT* record before 2026-09-23 and the latest LINK* record from that date",
+                      "One example of each descriptor form, to show what the matching rules see.")],
+            dedupe="One row per form, from a card panel where one exists; no member or transaction ids are "
+                   "published, and masked card-number tails are blanked.",
+            measure="DESCRIPTION is the raw card descriptor, MERCHANT the label extracted from it, IS_SHOPIFY "
+                    "the Shopify flag.",
             lag=f"Complete through run date minus {CARD_LAG_DAYS} days.",
         ),
     ),
     dict(
         key="app_usage_daily",
         title="AI assistant app downloads and DAU (SensorTower)",
-        keys=["APP", "COUNTRY"], measures=["DOWNLOADS", "DAU"], fill_zero=False,
+        keys=["APP", "COUNTRY"], measures=["DOWNLOADS", "DAU"], fill_zero=False, zero_before_first=True,
         start="app_start", through=None,
         sql="""
             SELECT CAST(date AS VARCHAR) AS DATE, app AS APP, country AS COUNTRY,
@@ -404,8 +660,8 @@ SECTIONS: list[dict] = [
                 ("Share set: Muse, ChatGPT (OpenAI), Gemini (Google), Claude (Anthropic), Grok (xAI), each by its "
                  "unified product key: " + ", ".join(f"{a} {APP_KEYS[a]}" for a in SHARE_APPS if a != "Muse"),
                  "Matched by key, never by name: 'ChatGPT' alone is 12 SensorTower products, mostly clones, and "
-                 "there is a clone 'Muse from Meta'. Share = the app's TR7D over the sum of the five apps' TR7D, "
-                 "for the same metric and country. Meta AI is excluded from the share set (it is the app Muse "
+                 "there is a clone 'Muse from Meta'. Share chart = the app's daily value over the sum of the five "
+                 "apps' daily values, for the same metric and country (the summary tile uses TR7D). Meta AI is excluded from the share set (it is the app Muse "
                  "sits beside, shown in its own chart)."),
                 ("Country US and WW only",
                  "WW is SensorTower's worldwide aggregate row; summing countries would double count it."),
@@ -415,22 +671,124 @@ SECTIONS: list[dict] = [
             measure="DOWNLOADS = estimated first-time downloads; DAU = estimated daily active users. Values are "
                     "modelled vendor estimates, best read as trends.",
             lag="Downloads run to about T-2 and DAU to T-3; the latest DAU day arrives as 0 and is treated as "
-                "missing. TR7D is shown only where all 7 days are present.",
+                "missing. TR7D is shown only where all 7 days are present. Days before an app's first SensorTower "
+                "row are zero (the app did not exist), so Muse's TR7D starts on launch day and builds over its "
+                "first week.",
+        ),
+    ),
+    dict(
+        key="ad_spend_daily",
+        title="Muse digital ad spend (Pathmatics)",
+        keys=["COUNTRY", "PUBLISHER"], measures=["SPEND"], fill_zero=True,
+        start="card_start", through=None,
+        sql="""
+            SELECT CAST(date AS VARCHAR) AS DATE, country AS COUNTRY, publisher AS PUBLISHER,
+                   ROUND(SUM(spend), 0) AS SPEND
+            FROM srs_slice.meta.ad_spend
+            WHERE date >= '{card_start}'
+            GROUP BY 1, 2, 3 ORDER BY 1, 2, 3
+        """,
+        methodology=dict(
+            source="Pathmatics PATHMATICS.COMMON.DIGITAL_AD_SPEND (estimated digital ad spend by advertiser, "
+                   "publisher, region and day).",
+            filters=[
+                ("Advertiser 'Muse from Meta'",
+                 "Pathmatics tracks Muse as its own advertiser, separate from Meta AI and Meta's other brands."),
+                ("Region United States or Canada",
+                 "Muse is live in the US and Canada only; other regions carry negligible spend."),
+            ],
+            dedupe="Summed per day, country and publisher.",
+            measure="SPEND = estimated US$ spend. A day with no row is no observed spend. Pathmatics covers "
+                    "digital channels only, not TV, and the "
+                    "team suspects budget has moved to TV, so a fall here is not a fall in total marketing.",
+            lag="Vendor series; the latest day shown is the latest Pathmatics has published (about T-3).",
+        ),
+    ),
+    dict(
+        key="web_traffic_daily",
+        title="muse.ai web traffic (SimilarWeb)",
+        keys=["COUNTRY"], measures=["VISITS"], fill_zero=False,
+        start="card_start", through=None,
+        sql="""
+            SELECT CAST(date AS VARCHAR) AS DATE, country AS COUNTRY, ROUND(SUM(visits), 0) AS VISITS
+            FROM srs_slice.meta.web_traffic
+            WHERE date >= '{card_start}'
+            GROUP BY 1, 2 ORDER BY 1, 2
+        """,
+        methodology=dict(
+            source="SimilarWeb daily visits, SIMILARWEB.SNOWFLAKE_INTEGRATION.DOWNSTREAM_DAILY (metric "
+                   "ALL_TRAFFIC_VISITS). Until the pipeline loads muse.ai, the build uses a SimilarWeb API "
+                   "snapshot with the same definition; the freshness line names the source used.",
+            filters=[
+                ("Domain muse.ai, desktop plus mobile web, subdomains included", "Muse's web app."),
+                ("Country US and WW", "WW is SimilarWeb's worldwide total, not a sum of countries."),
+            ],
+            dedupe="One value per day and country.",
+            measure="VISITS = estimated visits. Modelled vendor estimates, best read as trends. l.meta.ai (Meta "
+                    "AI's link-routing domain) is not yet tracked. muse.ai sends few outgoing clicks, which fits "
+                    "an agentic browser that acts on pages itself.",
+            lag="Vendor series, about T-3.",
+        ),
+    ),
+    dict(
+        key="launch_benchmark",
+        title="Launch benchmark: US downloads by day since launch (SensorTower)",
+        keys=None, measures=[], fill_zero=False,
+        sql="""
+            SELECT APP, DATE, DAY_N, DOWNLOADS, CUM_DOWNLOADS,
+                   CASE WHEN N7 = 7 THEN ROUND(SUM7 / 7, 0) END AS DOWNLOADS_TR7D
+            FROM (
+                SELECT app AS APP, CAST(date AS VARCHAR) AS DATE,
+                       DATEDIFF('day', MIN(date) OVER (PARTITION BY app), date) AS DAY_N,
+                       downloads AS DOWNLOADS,
+                       SUM(downloads) OVER (PARTITION BY app ORDER BY date
+                                            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS CUM_DOWNLOADS,
+                       SUM(downloads) OVER (PARTITION BY app ORDER BY date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS SUM7,
+                       COUNT(*) OVER (PARTITION BY app ORDER BY date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS N7
+                FROM srs_slice.meta.benchmark
+            ) t
+            ORDER BY APP, DAY_N
+        """,
+        methodology=dict(
+            source="SensorTower SENSORTOWER.COMMON.CORE for Muse, Sora, Threads, ChatGPT and Claude; Clubhouse "
+                   "from a SensorTower portal export (it is not in CORE).",
+            filters=[
+                ("Unified product keys: " + ", ".join(f"{a} {k}" for a, k in BENCHMARK_KEYS.items()),
+                 "Matched by key, never by name (clones share names)."),
+                ("US only; iPhone + Android phone", "The export for Clubhouse is summed the same way (iPad excluded)."),
+                (f"Day 0 = first day with downloads; window day 0 to {BENCHMARK_DAYS}",
+                 "Each app's CORE history starts on its launch day."),
+                (f"Clubhouse day 0 = {BENCHMARK_DAY0['Clubhouse']}",
+                 "Its viral breakout, the first day of the sustained jump in US downloads, rather than its "
+                 "invite-only iOS release in spring 2020."),
+            ],
+            dedupe="Summed per app and day.",
+            measure="DOWNLOADS = estimated first-time US downloads; CUM_DOWNLOADS = running total from day 0; "
+                    "DOWNLOADS_TR7D = mean of the last 7 days. Muse has fewer days than the others.",
+            lag="Downloads run to about T-2.",
         ),
     ),
 ]
 
+# Methodology order follows the page.
+_PAGE_ORDER = ["app_usage_daily", "ad_spend_daily", "launch_benchmark", "web_traffic_daily", "muse_web_daily",
+               "muse_inapp_daily", "inapp_flows_daily", "web_flows_daily", "agentic_daily", "agentic_merchants",
+               "agentic_samples"]
+SECTIONS.sort(key=lambda s: _PAGE_ORDER.index(s["key"]))
+
 # Headline tiles, read from the latest complete TR7D value of each series.
 SUMMARY = [
-    dict(label="Muse web subs, members/day", section="muse_web_daily", col="MEMBERS_TR7D", where={}),
-    dict(label="Muse in-app charges/day", section="muse_inapp_daily", col="CHARGES_TR7D", where={}),
-    dict(label="Muse in-app cancels/day", section="muse_inapp_daily", col="CANCELS_TR7D", where={}),
-    dict(label="Agentic txns per million", section="agentic_daily", col="PER_MILLION_TR7D", where={}),
     dict(label="Muse US downloads/day", section="app_usage_daily", col="DOWNLOADS_TR7D",
          where={"APP": "Muse", "COUNTRY": "US"}),
     dict(label="Muse US DAU", section="app_usage_daily", col="DAU_TR7D", where={"APP": "Muse", "COUNTRY": "US"}),
     dict(label="Meta AI US DAU", section="app_usage_daily", col="DAU_TR7D", where={"APP": "Meta AI", "COUNTRY": "US"}),
+    dict(label="Muse US ad spend $/day", section="ad_spend_daily", col="SPEND_TR7D", where={"COUNTRY": "US"}),
     # share_of: VALUE = this app's TR7D / the sum over share_of apps' TR7D on the same day
     dict(label="Muse share of US AI-assistant DAU", section="app_usage_daily", col="DAU_TR7D",
          where={"APP": "Muse", "COUNTRY": "US"}, share_of={"key": "APP", "values": SHARE_APPS}),
+    dict(label="muse.ai WW visits/day", section="web_traffic_daily", col="VISITS_TR7D", where={"COUNTRY": "WW"}),
+    dict(label="Muse web gross adds/day", section="web_flows_daily", col="GROSS_ADDS_TR7D", where={}),
+    dict(label="Muse in-app gross adds/day", section="inapp_flows_daily", col="GROSS_ADDS_TR7D", where={}),
+    dict(label="Muse in-app cancels/day", section="inapp_flows_daily", col="CANCELS_TR7D", where={}),
+    dict(label="Agentic txns per million", section="agentic_daily", col="PER_MILLION_TR7D", where={}),
 ]

@@ -19,6 +19,7 @@ matches roblox.json: {schema_version, generated_at, freshness, sections}, plus
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -149,6 +150,80 @@ def load_single(name: str, sql: str, run_date: date, offline: bool) -> pd.DataFr
     return cached(path, sql, fresh=False, offline=offline)
 
 
+def load_member_tenure(card_rows: pd.DataFrame, run_date: date, offline: bool) -> pd.DataFrame:
+    """First / last panel transaction per web Muse payer, one pruned range query per source, cached per run date
+    and payer set (a new payer re-pulls)."""
+    members = sorted(card_rows.loc[card_rows.signal == "muse_web", "member"].dropna().astype(str).unique())
+    key = hashlib.md5("|".join(members).encode()).hexdigest()[:10]
+    path = CACHE / "member_tenure" / f"{run_date.isoformat()}_{key}.parquet"
+    if path.exists():
+        log("member_tenure: cache")
+        return pd.read_parquet(path)
+    if offline:
+        latest = sorted((CACHE / "member_tenure").glob("*.parquet"))
+        if not latest:
+            raise FileNotFoundError("--offline and no cache for member_tenure")
+        log(f"member_tenure: --offline, using {latest[-1].name}")
+        return pd.read_parquet(latest[-1])
+    if not members:
+        return pd.DataFrame(columns=["source", "member", "first_seen", "last_seen"])
+    log(f"member_tenure: query for {len(members)} members x {len(S.CARD_SOURCES)} sources")
+    t0 = time.time()
+    with ThreadPoolExecutor(WORKERS) as pool:
+        df = pd.concat(pool.map(lambda s: q(S.member_tenure_sql(s, members, run_date.isoformat())), S.CARD_SOURCES),
+                       ignore_index=True)
+    log(f"member_tenure: {len(df)} rows in {time.time() - t0:.0f}s")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_parquet(path, index=False)
+    return df
+
+
+def load_web_traffic(run_date: date, offline: bool) -> tuple[pd.DataFrame, str]:
+    """SimilarWeb from Snowflake once the pipeline carries the domains; until then the MCP snapshot."""
+    df = load_single("web_traffic", S.WEB_TRAFFIC_SQL, run_date, offline)
+    if len(df):
+        return df, "SimilarWeb (Snowflake)"
+    snap = HERE / S.WEB_TRAFFIC_SNAPSHOT
+    df = pd.read_csv(snap)
+    log(f"web_traffic: no Snowflake rows, using {snap.name} ({len(df)} rows)")
+    as_of = datetime.fromtimestamp(snap.stat().st_mtime).date().isoformat()
+    return df, f"SimilarWeb (API snapshot {as_of})"
+
+
+def load_clubhouse() -> pd.DataFrame | None:
+    """US Clubhouse downloads and DAU from the SensorTower portal export, iPhone + Android (as CORE), day 0 window."""
+    xlsx = HERE / S.BENCHMARK_SNAPSHOT
+    if not xlsx.exists():
+        log(f"benchmark: {xlsx.name} not found, Clubhouse skipped")
+        return None
+    # Reading the workbook takes a minute; cache it keyed on the file's mtime.
+    path = CACHE / "clubhouse" / f"{int(xlsx.stat().st_mtime)}.parquet"
+    if path.exists():
+        return pd.read_parquet(path)
+    sheets = pd.read_excel(xlsx, sheet_name=["Downloads", "DAU"])
+
+    def us_daily(df: pd.DataFrame, col: str) -> pd.Series:
+        df = df[(df["Country / Region"] == "US") & (df["Device"] != "iPad")]
+        return df.groupby(pd.to_datetime(df["Date"]).dt.date)[col].sum(min_count=1).rename(col.lower())
+
+    out = pd.concat([us_daily(sheets["Downloads"], "Downloads"), us_daily(sheets["DAU"], "DAU")], axis=1)
+    day0 = date.fromisoformat(S.BENCHMARK_DAY0["Clubhouse"])
+    out = out.loc[[d for d in out.index if day0 <= d <= day0 + timedelta(days=S.BENCHMARK_DAYS)]]
+    out = out.rename_axis("date").reset_index().assign(app="Clubhouse")[["date", "app", "downloads", "dau"]]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    out.to_parquet(path, index=False)
+    return out
+
+
+def load_benchmark(run_date: date, offline: bool) -> tuple[pd.DataFrame, bool]:
+    core = load_single("benchmark", S.BENCHMARK_SQL, run_date, offline)
+    club = load_clubhouse()
+    if club is None:
+        return core, False
+    core = core.assign(date=pd.to_datetime(core["date"]).dt.date)
+    return pd.concat([core, club], ignore_index=True), True
+
+
 # ---------------------------------------------------------------------------
 # Sections
 # ---------------------------------------------------------------------------
@@ -189,6 +264,8 @@ def densify_tr7d(df: pd.DataFrame, sec: dict, start: str, through: str | None) -
             s = pd.to_numeric(g[m], errors="coerce")
             if sec["fill_zero"]:
                 s = s.fillna(0)
+            elif sec.get("zero_before_first") and s.first_valid_index() is not None:
+                s[s.index < s.first_valid_index()] = 0  # before an app's first day it did not exist: a true zero
             g[m] = s
             tr = s.rolling(S.TR_DAYS, min_periods=S.TR_DAYS).mean()
             # 3 decimals for small counts; whole numbers once values are large (DAU, downloads), to keep the payload small.
@@ -291,16 +368,24 @@ def main() -> None:
     t0 = time.time()
 
     card_rows, panel_totals = load_cards(run_date, args.offline or args.cache_cards)
+    tenure = load_member_tenure(card_rows, run_date, args.offline)
     niq = load_single("niq_receipts", S.NIQ_SQL, run_date, args.offline)
     app = load_single("app_usage", S.APP_USAGE_SQL, run_date, args.offline)
+    ad_spend = load_single("ad_spend", S.AD_SPEND_SQL, run_date, args.offline)
+    web_traffic, web_source = load_web_traffic(run_date, args.offline)
+    benchmark, has_clubhouse = load_benchmark(run_date, args.offline)
     if _conn is not None:
         _conn.close()  # explicit close; leaving it to interpreter exit re-triggered the OAuth browser prompt
 
     con = to_duckdb({
         "card_txns": (card_rows, ["day"]),
         "panel_totals": (panel_totals, ["day"]),
+        "member_tenure": (tenure, ["first_seen", "last_seen"]),
         "niq_receipts": (niq, ["order_date"]),
         "app_usage": (app, ["date"]),
+        "ad_spend": (ad_spend, ["date"]),
+        "web_traffic": (web_traffic, ["date"]),
+        "benchmark": (benchmark, ["date"]),
     })
     params = dict(
         card_start=S.CARD_START,
@@ -317,18 +402,25 @@ def main() -> None:
             df = densify_tr7d(df, sec, params[sec["start"]], params[sec["through"]] if sec["through"] else None)
         frames[sec["key"]] = add_derived(df, sec.get("derived", {}))
 
-    usage = frames["app_usage_daily"]
+    usage, web, bench = frames["app_usage_daily"], frames["web_traffic_daily"], frames["launch_benchmark"]
+    ad_spend_max = pd.to_datetime(ad_spend["date"]).max().date().isoformat() if len(ad_spend) else None
     freshness = [
         dict(DATASET="Card panels", MAX_DATE=params["card_through"]),
         dict(DATASET="E-receipts", MAX_DATE=params["niq_through"]),
         dict(DATASET="SensorTower downloads", MAX_DATE=usage.loc[usage.DOWNLOADS.notna(), "DATE"].max()),
         dict(DATASET="SensorTower DAU", MAX_DATE=usage.loc[usage.DAU.notna(), "DATE"].max()),
+        dict(DATASET="Pathmatics ad spend", MAX_DATE=ad_spend_max),
+        dict(DATASET=web_source, MAX_DATE=web.loc[web.VISITS.notna(), "DATE"].max()),
+        dict(DATASET="SensorTower benchmark (Muse)", MAX_DATE=bench.loc[bench.APP == "Muse", "DATE"].max()),
     ]
     payload = dict(
         schema_version=SCHEMA_VERSION,
         generated_at=datetime.now(timezone.utc).isoformat(),
         launch_date=S.LAUNCH,
+        card_start=S.CARD_START,
         share_apps=S.SHARE_APPS,
+        web_traffic_source=web_source,
+        benchmark_day0=S.BENCHMARK_DAY0 if has_clubhouse else {},
         freshness=freshness,
         summary=summary_rows(frames),
         methodology=methodology_payload(),

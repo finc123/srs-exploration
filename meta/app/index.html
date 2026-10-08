@@ -4,23 +4,23 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Meta Muse</title>
-<meta name="description" content="Meta Muse launch tracker: web and in-app subscriptions, app downloads and DAU, and Link agentic checkout. Daily and trailing 7-day, refreshed by the meta_muse workflow.">
+<meta name="description" content="Meta Muse launch tracker: app downloads and DAU, ad spend, launch benchmark, web traffic, web and in-app subscriptions and flows, and Link agentic checkout. Daily and trailing 7-day, refreshed by the meta_muse workflow.">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
   :root {
     --bg: #f7f7f5; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e3e2dd;
-    --accent: #2f5bd3; --c1: #2f5bd3; --c2: #d9822b; --c3: #2e9e6b; --c4: #a64ca6; --c5: #8a8a84; --warn: #b4541a;
+    --accent: #2f5bd3; --c1: #2f5bd3; --c2: #d9822b; --c3: #2e9e6b; --c4: #a64ca6; --c5: #8a8a84; --c6: #1f8a9e; --warn: #b4541a;
     --bar-alpha: 0.28;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       --bg: #151514; --panel: #1f1f1d; --ink: #ecebe6; --muted: #a09f99; --line: #34332f;
-      --accent: #7b9cff; --c1: #7b9cff; --c2: #f0a65a; --c3: #5cc795; --c4: #d38bd3; --c5: #b9b8b1; --warn: #f09a62;
+      --accent: #7b9cff; --c1: #7b9cff; --c2: #f0a65a; --c3: #5cc795; --c4: #d38bd3; --c5: #b9b8b1; --c6: #5ec4d6; --warn: #f09a62;
     }
   }
   :root[data-theme="dark"] {
     --bg: #151514; --panel: #1f1f1d; --ink: #ecebe6; --muted: #a09f99; --line: #34332f;
-    --accent: #7b9cff; --c1: #7b9cff; --c2: #f0a65a; --c3: #5cc795; --c4: #d38bd3; --c5: #b9b8b1; --warn: #f09a62;
+    --accent: #7b9cff; --c1: #7b9cff; --c2: #f0a65a; --c3: #5cc795; --c4: #d38bd3; --c5: #b9b8b1; --c6: #5ec4d6; --warn: #f09a62;
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink);
@@ -46,6 +46,11 @@
   .ctl button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
   .chart { position: relative; height: 280px; }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid2 > div { min-width: 0; }
+  .chead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px;
+           min-height: 26px; margin-bottom: 4px; color: var(--muted); font-size: 12px; font-weight: 600; }
+  h3 { font-size: 15px; margin: 16px 0 6px; }
+  code { font-size: 12px; overflow-wrap: anywhere; }
   @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } .chart { height: 240px; } }
   table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
   th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
@@ -61,7 +66,7 @@
 <body>
 <main>
   <h1>Meta Muse</h1>
-  <p class="sub">Launch tracker for Muse (released <span id="launch"></span>): subscriptions, app usage and agentic checkout.
+  <p class="sub">Launch tracker for Muse (released <span id="launch"></span>): app usage and marketing, web traffic, subscriptions and agentic checkout.
     Faint bars are daily values; lines are the trailing 7-day mean (TR7D).</p>
   <div class="fresh" id="fresh"></div>
   <div class="tiles" id="tiles"></div>
@@ -79,7 +84,7 @@ const LOCAL = location.protocol === "file:" || ["localhost", "127.0.0.1"].includ
 const JSON_URLS = LOCAL ? ["meta_muse.json", "http://127.0.0.1:8765/" + DATA_KEY] : [DATA_KEY.split("/").pop()];
 
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-const COLORS = () => [css("--c1"), css("--c2"), css("--c3"), css("--c4"), css("--c5")];
+const COLORS = () => [css("--c1"), css("--c2"), css("--c3"), css("--c4"), css("--c5"), css("--c6")];
 const fmt = (v, d = 0, min = d) => v == null ? "–" : Number(v).toLocaleString(undefined, { maximumFractionDigits: d, minimumFractionDigits: min });
 const fmtBig = v => v == null ? "–" : Math.abs(v) >= 1e6 ? fmt(v / 1e6, 2) + "M" : Math.abs(v) >= 1e4 ? fmt(v / 1e3, 0) + "k" : fmt(v, v < 10 ? 2 : 0, 0);
 const pct = v => v == null ? "–" : (v >= 0 ? "+" : "") + fmt(v * 100, 1) + "%";
@@ -102,7 +107,11 @@ Chart.register(launchLine);
 
 const charts = {};
 function draw(id, labels, datasets, opts = {}) {
-  charts[id]?.destroy();
+  // Keep series hidden via the legend hidden across redraws (toggles), matched by label.
+  const old = charts[id], hidden = new Set();
+  if (old) old.data.datasets.forEach((d, i) => { if (!old.isDatasetVisible(i)) hidden.add(d.label); });
+  datasets = datasets.map(d => hidden.has(d.label) ? { ...d, hidden: true } : d);
+  old?.destroy();
   const grid = css("--line"), ink = css("--muted");
   charts[id] = new Chart(document.getElementById(id), {
     data: { labels, datasets },
@@ -112,9 +121,11 @@ function draw(id, labels, datasets, opts = {}) {
                  tooltip: { callbacks: { label: opts.label || (c => `${c.dataset.label}: ${opts.pct ? pct(c.parsed.y) : fmtBig(c.parsed.y)}`),
                                          footer: opts.footer } } },
       scales: {
-        x: { ticks: { color: ink, maxTicksLimit: 10, maxRotation: 0 }, grid: { display: false }, stacked: !!opts.stacked },
-        y: { ticks: { color: ink, callback: v => opts.share ? fmt(v * 100, 0) + "%" : opts.pct ? pct(v) : fmtBig(v) },
-             grid: { color: grid }, beginAtZero: true, stacked: !!opts.stacked, max: opts.share ? 1 : undefined },
+        x: { ticks: { color: ink, maxTicksLimit: 10, maxRotation: 0 }, grid: { display: false }, stacked: !!opts.stacked,
+             title: { display: !!opts.xTitle, text: opts.xTitle, color: ink } },
+        y: { type: opts.log ? "logarithmic" : "linear",
+             ticks: { color: ink, callback: v => opts.share ? fmt(v * 100, 0) + "%" : opts.pct ? pct(v) : fmtBig(v) },
+             grid: { color: grid }, beginAtZero: !opts.log, stacked: !!opts.stacked, max: opts.share ? 1 : undefined },
       },
     },
   });
@@ -130,7 +141,20 @@ function series(rows, col, where = {}, dates) {
   }
   return dates.map(d => m.has(d) ? m.get(d) : null);
 }
-const datesOf = rows => [...new Set(rows.map(r => r.DATE))].sort();
+// One shared calendar for every daily chart, so dates (and the launch line) sit at the same x everywhere.
+const DAILY_SECTIONS = ["app_usage_daily", "ad_spend_daily", "web_traffic_daily", "muse_web_daily", "muse_inapp_daily",
+                        "inapp_flows_daily", "web_flows_daily", "agentic_daily"];
+let CAL = [];
+function calendar(p) {
+  const start = p.card_start || "2026-08-01";
+  let end = start;
+  for (const k of DAILY_SECTIONS) for (const r of p.sections[k] || []) if (r.DATE > end) end = r.DATE;
+  const out = [];
+  for (let d = new Date(start + "T00:00:00Z"); d.toISOString().slice(0, 10) <= end; d.setUTCDate(d.getUTCDate() + 1))
+    out.push(d.toISOString().slice(0, 10));
+  return out;
+}
+const sum = a => a.reduce((t, v) => t + (v ?? 0), 0);
 const bar = (label, data, color) => ({ type: "bar", label: label + " (daily)", data, backgroundColor: alpha(color, +css("--bar-alpha") || 0.28), borderWidth: 0 });
 // Each line gets its own stack, so on a stacked-bar chart it is drawn at its own value rather than on top of the bars.
 const line = (label, data, color) => ({ type: "line", label: label + " (TR7D)", data, borderColor: color, backgroundColor: color, pointRadius: 0, borderWidth: 2, spanGaps: false, stack: "tr7d:" + label });
@@ -152,66 +176,77 @@ function block(title, note) {
   return { el: s, ctls: s.querySelector(".ctls") };
 }
 
+// A chart column with its own small heading and pill row (for blocks with two charts side by side).
+const col = (id, title) => `<div><div class="chead"><span>${esc(title)}</span><div class="ctl-host" id="${id}_ctl"></div></div><div class="chart"><canvas id="${id}"></canvas></div></div>`;
+const ctlHost = id => document.getElementById(id + "_ctl");
+
 const BLOCKS = [
-  { key: "muse_web_daily", render(rows) {
-      const b = block("Muse web subscriptions (card panels)",
-        "Members charged by <code>METAPAY META.COM</code> at the $16 Power / $80 Max web prices. Yodlee feeds 3, 4 and 6, deduplicated.");
-      b.el.insertAdjacentHTML("beforeend", `<div class="chart"><canvas id="c_web"></canvas></div>`);
-      const st = { Plan: "All" }, dates = datesOf(rows), C = COLORS();
-      const go = () => {
-        const plans = st.Plan === "All" ? ["Power", "Max"] : [st.Plan];
-        draw("c_web", dates, [
-          ...plans.map((p, i) => ({ ...bar(p, series(rows, "MEMBERS", { PLAN: p }, dates), C[i]), stack: "d" })),
-          line(st.Plan === "All" ? "Total" : st.Plan, series(rows, "MEMBERS_TR7D", { PLAN: st.Plan }, dates), C[0]),
-        ], { stacked: true });
-      };
-      buttons(b.ctls, "Plan", ["All", "Power", "Max"], st, go); go();
-  } },
-  { key: "muse_inapp_daily", render(rows) {
-      const b = block("Muse in-app subscriptions (e-receipts)",
-        "NIQ App Store / Google Play receipts naming “Muse from Meta”, active mailboxes only. Distinct mailboxes per day; the dark line is the total across both stores.");
-      b.el.insertAdjacentHTML("beforeend", `<div class="grid2"><div class="chart"><canvas id="c_inapp"></canvas></div><div class="chart"><canvas id="c_cancel"></canvas></div></div>`);
-      const st = { Plan: "All" }, dates = datesOf(rows), C = COLORS(), stores = ["Apple", "Google Play"];
-      const go = () => {
-        draw("c_inapp", dates, [
-          ...stores.map((s, i) => ({ ...bar(s, series(rows, "CHARGES", { STORE: s, PLAN: st.Plan }, dates), C[i]), stack: "d" })),
-          ...stores.map((s, i) => line(s + " charges", series(rows, "CHARGES_TR7D", { STORE: s, PLAN: st.Plan }, dates), C[i])),
-          { ...line("Total charges", series(rows, "CHARGES_TR7D", { PLAN: st.Plan }, dates), css("--ink")), borderWidth: 2.5 },
-        ], { stacked: true });
-        draw("c_cancel", dates, [
-          line("Trials", series(rows, "TRIALS_TR7D", { PLAN: st.Plan }, dates), C[2]),
-          line("Cancels", series(rows, "CANCELS_TR7D", { PLAN: st.Plan }, dates), C[3]),
-          bar("Cancels", series(rows, "CANCELS", { PLAN: st.Plan }, dates), C[3]),
-        ]);
-      };
-      buttons(b.ctls, "Plan", ["All", "Power", "Max"], st, go); go();
-  } },
-  { key: "app_usage_daily", render(rows) {
-      const b = block("App downloads and DAU (SensorTower)",
-        "Muse from Meta vs the Meta AI app it sits beside. Muse is live in the US and Canada only, so WW ≈ US + CA.");
-      b.el.insertAdjacentHTML("beforeend", `<div class="chart"><canvas id="c_app"></canvas></div>`);
-      const st = { Metric: "DAU", Country: "US" }, dates = datesOf(rows), C = COLORS();
+  { key: "app_usage_daily", render(rows, sections) {
+      const b = block("App downloads, DAU and ad spend",
+        "Left: Muse from Meta vs the Meta AI app it sits beside (SensorTower). Muse is live in the US and Canada only, so WW ≈ US + CA. " +
+        "Right: Muse digital ad spend by publisher (Pathmatics). Pathmatics covers digital channels only, not TV.");
+      b.el.insertAdjacentHTML("beforeend", `<div class="grid2">${col("c_app", "Muse vs Meta AI")}${col("c_ad", "Digital ad spend, US$")}</div>`);
+      const st = { Metric: "DAU", Country: "US" }, dates = CAL, C = COLORS();
       const go = () => {
         const w = a => ({ APP: a, COUNTRY: st.Country }), m = st.Metric === "DAU" ? "DAU" : "DOWNLOADS";
         draw("c_app", dates, ["Muse", "Meta AI"].flatMap((a, i) => [
           bar(a, series(rows, m, w(a), dates), C[i]), line(a, series(rows, m + "_TR7D", w(a), dates), C[i])]));
       };
       buttons(b.ctls, "Metric", ["DAU", "Downloads"], st, go); buttons(b.ctls, "Country", ["US", "WW"], st, go); go();
+
+      const ad = sections.ad_spend_daily || [], sa = { "Ad market": "US" };
+      const goAd = () => {
+        const where = { COUNTRY: sa["Ad market"] };
+        // Top 4 publishers by spend in the selected market; the rest are grouped as Other.
+        const tot = {};
+        for (const r of ad) if (sa["Ad market"] === "All" || r.COUNTRY === sa["Ad market"]) tot[r.PUBLISHER] = (tot[r.PUBLISHER] || 0) + (r.SPEND || 0);
+        const pubs = Object.keys(tot).sort((a, b) => tot[b] - tot[a]), top = pubs.slice(0, 4), rest = pubs.slice(4);
+        const per = p => series(ad, "SPEND", { ...where, PUBLISHER: p }, dates);
+        const sets = top.map((p, i) => ({ ...bar(p, per(p), C[i + 1]), stack: "d" }));
+        if (rest.length) {
+          const parts = rest.map(per);
+          sets.push({ ...bar("Other", dates.map((_, j) => parts.some(s => s[j] != null) ? sum(parts.map(s => s[j])) : null), C[4]), stack: "d" });
+        }
+        sets.push({ ...line("Total", series(ad, "SPEND_TR7D", where, dates), css("--ink")), borderWidth: 2.5 });
+        draw("c_ad", dates, sets, { stacked: true });
+      };
+      if (ad.length) { buttons(ctlHost("c_ad"), "Ad market", ["US", "CA", "All"], sa, goAd); goAd(); }
+  } },
+  { key: "launch_benchmark", render(rows, sections, p) {
+      const day0 = p.benchmark_day0 || {};
+      const b = block("Launch benchmark: US downloads by day since launch",
+        "SensorTower US downloads (iPhone + Android) from each app's day 0, the first day with downloads. " +
+        (day0.Clubhouse ? `Clubhouse comes from a SensorTower export; its day 0 is its viral breakout (${esc(day0.Clubhouse)}), not its spring-2020 invite-only release. `
+                        : "Clubhouse is unavailable in this build (no export found). ") +
+        "Use Log scale to compare Muse with the much larger ChatGPT and Threads launches.");
+      b.el.insertAdjacentHTML("beforeend", `<div class="chart" style="height:340px"><canvas id="c_bench"></canvas></div>`);
+      const st = { View: "Cumulative", Scale: "Linear" }, C = COLORS();
+      const apps = ["Muse", "ChatGPT", "Threads", "Sora", "Claude", "Clubhouse"].filter(a => rows.some(r => r.APP === a));
+      const maxN = Math.max(0, ...rows.map(r => r.DAY_N)), labels = Array.from({ length: maxN + 1 }, (_, i) => i);
+      const go = () => {
+        const colName = st.View === "Cumulative" ? "CUM_DOWNLOADS" : "DOWNLOADS_TR7D", log = st.Scale === "Log";
+        draw("c_bench", labels, apps.map((a, i) => {
+          const data = labels.map(() => null);
+          for (const r of rows) if (r.APP === a && r[colName] != null && (!log || r[colName] > 0)) data[r.DAY_N] = r[colName];
+          const name = a === "Clubhouse" && day0.Clubhouse ? `Clubhouse (day 0 = ${day0.Clubhouse})` : a;
+          return { type: "line", label: name, data, borderColor: C[i], backgroundColor: C[i], pointRadius: 0,
+                   borderWidth: a === "Muse" ? 3.5 : 1.5, spanGaps: true, order: a === "Muse" ? 0 : 1 };
+        }), { log, xTitle: "Days since launch" });
+      };
+      buttons(b.ctls, "View", ["Cumulative", "Daily TR7D"], st, go); buttons(b.ctls, "Scale", ["Linear", "Log"], st, go); go();
   } },
   { key: "app_usage_daily", render(rows) {
-      const b = block("AI assistant share (SensorTower, TR7D)",
-        "Stacked TR7D across Muse, ChatGPT, Gemini, Claude and Grok: bar height is the five-app total, segments are each app. Switch View to Share for the 100% split. Apps are matched by SensorTower product key, not name.");
+      const b = block("AI assistant share (SensorTower, daily)",
+        "Stacked daily values across Muse, ChatGPT, Gemini, Claude and Grok: bar height is the five-app total, segments are each app. A day is shown only when every app has a value (DAU arrives a day later than downloads). Switch View to Share for the 100% split. Apps are matched by SensorTower product key, not name. August is the pre-launch baseline.");
       b.el.insertAdjacentHTML("beforeend", `<div class="chart" style="height:320px"><canvas id="c_share"></canvas></div>`);
-      const st = { Metric: "DAU", Country: "US", View: "Level" }, C = COLORS(), apps = SHARE_APPS;
+      const st = { Metric: "DAU", Country: "US", View: "Level" }, C = COLORS(), apps = SHARE_APPS, dates = CAL;
       const go = () => {
-        const col = (st.Metric === "DAU" ? "DAU" : "DOWNLOADS") + "_TR7D";
-        const all = datesOf(rows);
-        const raw = apps.map(a => series(rows, col, { APP: a, COUNTRY: st.Country }, all));
+        const colName = st.Metric === "DAU" ? "DAU" : "DOWNLOADS";  // daily values, not TR7D
+        const raw = apps.map(a => series(rows, colName, { APP: a, COUNTRY: st.Country }, dates));
         // A day counts only when every comparison app has a value; Muse before launch is a true zero.
-        const keep = all.map((_, j) => apps.every((a, i) => a === "Muse" || raw[i][j] != null));
-        const dates = all.filter((_, j) => keep[j]);
-        const lvl = raw.map(s => s.filter((_, j) => keep[j]).map(v => v ?? 0));
-        const tot = dates.map((_, j) => lvl.reduce((t, s) => t + s[j], 0));
+        const keep = dates.map((_, j) => apps.every((a, i) => a === "Muse" || raw[i][j] != null));
+        const lvl = raw.map(s => s.map((v, j) => keep[j] ? v ?? 0 : null));
+        const tot = dates.map((_, j) => keep[j] ? sum(lvl.map(s => s[j])) : null);
         const shr = lvl.map(s => s.map((v, j) => tot[j] ? v / tot[j] : null));
         const view = st.View === "Share" ? shr : lvl;
         draw("c_share", dates, apps.map((a, i) => ({ type: "bar", label: a, data: view[i], stack: "s", borderWidth: 0,
@@ -224,20 +259,61 @@ const BLOCKS = [
       buttons(b.ctls, "Metric", ["DAU", "Downloads"], st, go); buttons(b.ctls, "Country", ["US", "WW"], st, go);
       buttons(b.ctls, "View", ["Level", "Share"], st, go); go();
   } },
+  { key: "web_traffic_daily", render(rows, sections, p) {
+      const b = block("muse.ai web traffic (SimilarWeb)",
+        `Daily visits to muse.ai, desktop and mobile web. Source: ${esc(p.web_traffic_source || "SimilarWeb")}. ` +
+        "l.meta.ai, Meta AI's link-routing domain, is not tracked yet. muse.ai sends few outgoing clicks, which fits an agentic browser that acts on pages itself.");
+      b.el.insertAdjacentHTML("beforeend", `<div class="chart"><canvas id="c_webtraffic"></canvas></div>`);
+      const st = { Country: "WW" }, dates = CAL, C = COLORS();
+      const go = () => draw("c_webtraffic", dates, [
+        bar("Visits", series(rows, "VISITS", { COUNTRY: st.Country }, dates), C[5]),
+        line("Visits", series(rows, "VISITS_TR7D", { COUNTRY: st.Country }, dates), C[5])]);
+      buttons(b.ctls, "Country", ["WW", "US"], st, go); go();
+  } },
+  { key: "inapp_flows_daily", render(rows, sections) {
+      const b = block("Subscriber flows: gross adds and churn",
+        "Gross adds above zero, cancellations below, and the net-adds TR7D line. " +
+        "Left, e-receipts: a gross add is a mailbox's first sign-up receipt (Apple's subscription confirmation, Google Play's first payment); cancellations are the stores' cancellation emails. " +
+        "Right, cards: a gross add is a payment with none in the previous 35 days, by a member in the panel for over 35 days; a cancellation is no payment within 35 days of the last one, dated at day 35, by a member still active in the panel (lapses by members who left the panel are excluded). " +
+        "The first web payment was 2026-09-17, so card cancellations can start from 2026-10-22. Store applies to the e-receipt chart only.");
+      b.el.insertAdjacentHTML("beforeend", `<div class="grid2">${col("c_flow_ia", "In-app (e-receipts)")}${col("c_flow_web", "Web (cards)")}</div>`);
+      const web = sections.web_flows_daily || [], st = { Store: "All", Plan: "All" }, dates = CAL, C = COLORS();
+      const neg = a => a.map(v => v == null ? null : -v);
+      const go = () => {
+        const w = { STORE: st.Store, PLAN: st.Plan };
+        draw("c_flow_ia", dates, [
+          { ...bar("Gross adds", series(rows, "GROSS_ADDS", w, dates), C[2]), stack: "d" },
+          { ...bar("Cancels", neg(series(rows, "CANCELS", w, dates)), C[3]), stack: "d" },
+          { ...line("Net adds", series(rows, "NET_ADDS_TR7D", w, dates), css("--ink")), borderWidth: 2.5 },
+        ], { stacked: true, label: c => `${c.dataset.label}: ${fmtBig(Math.abs(c.parsed.y))}` });
+        const pw = { PLAN: st.Plan };
+        draw("c_flow_web", dates, [
+          { ...bar("Gross adds", series(web, "GROSS_ADDS", pw, dates), C[2]), stack: "d" },
+          { ...bar("Cancels", neg(series(web, "CANCELS", pw, dates)), C[3]), stack: "d" },
+          { ...line("Net adds", series(web, "NET_ADDS_TR7D", pw, dates), css("--ink")), borderWidth: 2.5 },
+        ], { stacked: true, label: c => `${c.dataset.label}: ${fmtBig(Math.abs(c.parsed.y))}` });
+      };
+      buttons(b.ctls, "Store", ["All", "Apple", "Google Play"], st, go); buttons(b.ctls, "Plan", ["All", "Power", "Max"], st, go); go();
+  } },
   { key: "agentic_daily", render(rows, sections) {
       const b = block("Agentic Checkout to Non-Stripe Merchants",
         "Muse, GrokBot and Instinct use Stripe Virtual Cards for merchants that do not accept Stripe as a payment processor. Cleveland Research noted that the majority of agentic spend from a card issuer was coming from Muse.");
       b.el.insertAdjacentHTML("beforeend", `<div class="grid2"><div class="chart"><canvas id="c_ag"></canvas></div><div class="chart"><canvas id="c_ag2"></canvas></div></div>
-        <h2 style="margin:16px 0 6px;font-size:15px">Top merchants, trailing 28 days</h2><div class="scroll"><table id="t_merch"></table></div>`);
-      const dates = datesOf(rows), C = COLORS();
+        <h3>Top merchants, trailing 28 days</h3><div class="scroll"><table id="t_merch"></table></div>
+        <h3>Example records</h3><p class="note">The raw card descriptor and what the matching rules read from it: the form (<code>LINKAGNT*</code> until 2026-09-23, <code>LINK*</code> after), the merchant label after the prefix, and the Shopify flag (<code>SP</code> store prefix).</p>
+        <div class="scroll"><table id="t_samples"></table></div>`);
+      const dates = CAL, C = COLORS();
       draw("c_ag", dates, [bar("Per million", series(rows, "PER_MILLION", {}, dates), C[0]),
                            line("Per million", series(rows, "PER_MILLION_TR7D", {}, dates), C[0])]);
       draw("c_ag2", dates, [bar("Agentic txns", series(rows, "TXNS", {}, dates), C[1]),
                             line("Agentic txns", series(rows, "TXNS_TR7D", {}, dates), C[1]),
                             line("Shopify-store txns", series(rows, "SHOPIFY_TXNS_TR7D", {}, dates), C[2])]);
       const m = sections.agentic_merchants || [];
-      document.getElementById("t_merch").innerHTML = `<tr><th>Merchant (descriptor)</th><th class="n">Txns</th><th class="n">Median $</th></tr>` +
-        m.map(r => `<tr><td>${esc(r.MERCHANT)}</td><td class="n">${fmt(r.TXNS)}</td><td class="n">${fmt(r.MEDIAN_AMOUNT, 2)}</td></tr>`).join("");
+      document.getElementById("t_merch").innerHTML = `<tr><th>Merchant (descriptor)</th><th class="n">Txns</th><th class="n">Cardholders</th><th class="n">Median $</th></tr>` +
+        m.map(r => `<tr><td>${esc(r.MERCHANT)}</td><td class="n">${fmt(r.TXNS)}</td><td class="n">${fmt(r.CARDHOLDERS)}</td><td class="n">${fmt(r.MEDIAN_AMOUNT, 2)}</td></tr>`).join("");
+      const ex = sections.agentic_samples || [];
+      document.getElementById("t_samples").innerHTML = `<tr><th>Date</th><th>Descriptor</th><th>Form</th><th>Merchant</th><th>Shopify</th><th class="n">$</th></tr>` +
+        ex.map(r => `<tr><td>${esc(r.DATE)}</td><td><code>${esc(r.DESCRIPTION)}</code></td><td>${esc(r.FORM)}</td><td>${esc(r.MERCHANT)}</td><td>${r.IS_SHOPIFY ? "Yes" : "No"}</td><td class="n">${fmt(r.AMOUNT, 2)}</td></tr>`).join("");
   } },
 ];
 
@@ -271,7 +347,8 @@ load().then(p => {
   document.getElementById("fresh").innerHTML = p.freshness.map(f => `<span>${esc(f.DATASET)} through <b>${esc(f.MAX_DATE)}</b></span>`).join("") +
     `<span>Built ${esc(p.generated_at.slice(0, 16).replace("T", " "))} UTC</span>`;
   renderTiles(p.summary);
-  for (const b of BLOCKS) if (p.sections[b.key]) b.render(p.sections[b.key], p.sections);
+  CAL = calendar(p);
+  for (const b of BLOCKS) if (p.sections[b.key]) b.render(p.sections[b.key], p.sections, p);
   renderMethodology(p.methodology);
 }).catch(e => { document.getElementById("blocks").innerHTML = `<p class="err">${esc(e.message)}</p>`; });
 </script>

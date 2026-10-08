@@ -48,4 +48,40 @@ for c in ("US", "WW"):
         print(f"  {c} {d}:", ", ".join(f"{a} {v / y.sum():.1%} ({v / 1e6:.2f}M)" for a, v in y.sort_values(ascending=False).items()))
 
 print("\ntop merchants:")
-print(S["agentic_merchants"].head(10).to_string(index=False))
+am = S["agentic_merchants"]
+print(am.head(10).to_string(index=False))
+print("CARDHOLDERS <= TXNS for every merchant:", bool((am.CARDHOLDERS <= am.TXNS).all()))
+print("\nexample records:")
+print(S["agentic_samples"].to_string(index=False))
+
+print("\nin-app flows:")
+fl = S["inapp_flows_daily"]
+print(fl.groupby(["STORE", "PLAN"])[["GROSS_ADDS", "CANCELS", "NET_ADDS"]].sum().to_string())
+print("gross adds total:", int(fl.GROSS_ADDS.sum()), "(should equal distinct charging mailbox x store x plan)")
+print("cancels match muse_inapp_daily:", int(fl.CANCELS.sum()) == int(ia.CANCELS.sum()))
+
+print("\nweb flows:")
+wf = S["web_flows_daily"]
+cols = ["GROSS_ADDS", "CANCELS", "NET_ADDS", "RENEWALS", "NEW_TO_PANEL", "PANEL_EXITS"]
+print(wf.groupby("PLAN")[cols].sum().to_string())
+paid = int(wf[["GROSS_ADDS", "RENEWALS", "NEW_TO_PANEL"]].sum().sum())
+print("gross adds + renewals + new-to-panel = distinct (member, day, plan) payments:", paid,
+      "vs muse_web TXNS", int(web.TXNS.sum()), "(TXNS also splits by amount, so can be slightly higher)")
+print("no lapses before 2026-10-22:", int(wf.loc[wf.DATE < "2026-10-22", ["CANCELS", "PANEL_EXITS"]].sum().sum()) == 0)
+
+print("\nad spend by country (window):")
+ad = S["ad_spend_daily"]
+print(ad.groupby("COUNTRY").SPEND.sum().map("{:,.0f}".format).to_string(), "| latest", ad.loc[ad.SPEND > 0, "DATE"].max())
+print(weekly(ad[ad.COUNTRY == "US"], ["SPEND"]).tail(6).to_string())
+
+print("\nweb traffic (", [f["DATASET"] for f in p["freshness"] if "SimilarWeb" in f["DATASET"]], "):")
+wt = S["web_traffic_daily"]
+print("non-null VISITS:", int(wt.VISITS.notna().sum()), "of", len(wt))
+print(wt.dropna(subset=["VISITS_TR7D"]).sort_values("DATE").groupby("COUNTRY").tail(1).to_string(index=False))
+
+print("\nlaunch benchmark:")
+bm = S["launch_benchmark"]
+print(bm.groupby("APP").agg(DAY0=("DATE", "min"), DAYS=("DAY_N", "max"), MIN_DAY_N=("DAY_N", "min"),
+                            CUM=("CUM_DOWNLOADS", "max")).to_string())
+d30 = bm[bm.DAY_N == 30].set_index("APP").CUM_DOWNLOADS
+print("cumulative downloads at day 30:", d30.map("{:,.0f}".format).to_dict())

@@ -8,7 +8,87 @@ Muse launched on 2026-09-08. Card and e-receipt windows start 2026-08-01 to give
 
 **Why two sources for subscriptions?** They see different halves of the market: card panels see web sign-ups billed directly by Meta (`METAPAY META.COM`), but Apple card descriptors carry no app name. E-receipts see App Store and Google Play subscriptions by name, but Meta's own web billing sends no receipt the panel captures. Neither is double-counted against the other.
 
-Complete-through dates for this build: cards 2026-10-02, e-receipts 2026-10-06.
+Complete-through dates for this build: cards 2026-10-03, e-receipts 2026-10-07.
+
+## AI assistant app downloads and DAU (SensorTower)
+
+`sections.app_usage_daily`
+
+**Source.** SensorTower SENSORTOWER.COMMON.CORE (refreshed daily by sync_sensortower_core).
+
+**Filters.**
+
+| Rule | Why |
+|---|---|
+| Unified product 6aa0b99dd70c1a09e42dc613 ('Muse from Meta', com.facebook.aura / iOS 6760173601) | Muse is a new app, not a rename of Meta AI. It is live in the US (from 2026-09-07) and Canada (from 09-14) only. |
+| Unified product 613aafdee8b8ad2c7f063b8e ('Meta AI', com.facebook.stella) | The predecessor app, shown for cannibalisation: its US downloads fell by about 60% in launch week. |
+| Share set: Muse, ChatGPT (OpenAI), Gemini (Google), Claude (Anthropic), Grok (xAI), each by its unified product key: ChatGPT 64665f59b3ae2712001279ed, Gemini 65c58645bd9b7e3bc33c81b4, Claude 663279a2b3ae277df21f2bd0, Grok 676652c29ccf2a852260e663 | Matched by key, never by name: 'ChatGPT' alone is 12 SensorTower products, mostly clones, and there is a clone 'Muse from Meta'. Share chart = the app's daily value over the sum of the five apps' daily values, for the same metric and country (the summary tile uses TR7D). Meta AI is excluded from the share set (it is the app Muse sits beside, shown in its own chart). |
+| Country US and WW only | WW is SensorTower's worldwide aggregate row; summing countries would double count it. |
+
+**Deduplication.** iPhone and Android phone summed per app, country and day (a user active on both counts twice in DAU; small for a phone app).
+
+**Measure.** DOWNLOADS = estimated first-time downloads; DAU = estimated daily active users. Values are modelled vendor estimates, best read as trends.
+
+**Lag.** Downloads run to about T-2 and DAU to T-3; the latest DAU day arrives as 0 and is treated as missing. TR7D is shown only where all 7 days are present. Days before an app's first SensorTower row are zero (the app did not exist), so Muse's TR7D starts on launch day and builds over its first week.
+
+## Muse digital ad spend (Pathmatics)
+
+`sections.ad_spend_daily`
+
+**Source.** Pathmatics PATHMATICS.COMMON.DIGITAL_AD_SPEND (estimated digital ad spend by advertiser, publisher, region and day).
+
+**Filters.**
+
+| Rule | Why |
+|---|---|
+| Advertiser 'Muse from Meta' | Pathmatics tracks Muse as its own advertiser, separate from Meta AI and Meta's other brands. |
+| Region United States or Canada | Muse is live in the US and Canada only; other regions carry negligible spend. |
+
+**Deduplication.** Summed per day, country and publisher.
+
+**Measure.** SPEND = estimated US$ spend. A day with no row is no observed spend. Pathmatics covers digital channels only, not TV, and the team suspects budget has moved to TV, so a fall here is not a fall in total marketing.
+
+**Lag.** Vendor series; the latest day shown is the latest Pathmatics has published (about T-3).
+
+## Launch benchmark: US downloads by day since launch (SensorTower)
+
+`sections.launch_benchmark`
+
+**Source.** SensorTower SENSORTOWER.COMMON.CORE for Muse, Sora, Threads, ChatGPT and Claude; Clubhouse from a SensorTower portal export (it is not in CORE).
+
+**Filters.**
+
+| Rule | Why |
+|---|---|
+| Unified product keys: Muse 6aa0b99dd70c1a09e42dc613, Sora 68dc489f4e04a24f7d0d0aeb, Threads 64a72c98ad4adb0e06dbc506, ChatGPT 64665f59b3ae2712001279ed, Claude 663279a2b3ae277df21f2bd0 | Matched by key, never by name (clones share names). |
+| US only; iPhone + Android phone | The export for Clubhouse is summed the same way (iPad excluded). |
+| Day 0 = first day with downloads; window day 0 to 120 | Each app's CORE history starts on its launch day. |
+| Clubhouse day 0 = 2020-12-15 | Its viral breakout, the first day of the sustained jump in US downloads, rather than its invite-only iOS release in spring 2020. |
+
+**Deduplication.** Summed per app and day.
+
+**Measure.** DOWNLOADS = estimated first-time US downloads; CUM_DOWNLOADS = running total from day 0; DOWNLOADS_TR7D = mean of the last 7 days. Muse has fewer days than the others.
+
+**Lag.** Downloads run to about T-2.
+
+## muse.ai web traffic (SimilarWeb)
+
+`sections.web_traffic_daily`
+
+**Source.** SimilarWeb daily visits, SIMILARWEB.SNOWFLAKE_INTEGRATION.DOWNSTREAM_DAILY (metric ALL_TRAFFIC_VISITS). Until the pipeline loads muse.ai, the build uses a SimilarWeb API snapshot with the same definition; the freshness line names the source used.
+
+**Filters.**
+
+| Rule | Why |
+|---|---|
+| Domain muse.ai, desktop plus mobile web, subdomains included | Muse's web app. |
+| Country US and WW | WW is SimilarWeb's worldwide total, not a sum of countries. |
+
+**Deduplication.** One value per day and country.
+
+**Measure.** VISITS = estimated visits. Modelled vendor estimates, best read as trends. l.meta.ai (Meta AI's link-routing domain) is not yet tracked. muse.ai sends few outgoing clicks, which fits an agentic browser that acts on pages itself.
+
+**Lag.** Vendor series, about T-3.
 
 ## Muse web subscriptions (card panels)
 
@@ -23,11 +103,11 @@ Complete-through dates for this build: cards 2026-10-02, e-receipts 2026-10-06.
 | Description contains METAPAY and META.COM (e.g. 'METAPAY META.COM CA') | Meta bills web subscriptions directly under this descriptor. Muse has no app-name in the descriptor, so the descriptor alone identifies Meta direct billing, not Muse. |
 | Exclude METAPAY* / METAPAY * (with an asterisk) | That form is Meta Pay: ad payments and peer-to-peer transfers, not subscriptions. |
 | Amount $15.99-17.60 (Power) or $79.99-88.00 (Max) | Muse web list prices are $16 and $80; the upper bounds allow for sales tax. The same descriptor carried legacy $11.99 / $12.99 charges before launch and occasional off-price charges (e.g. $15.90 on 2026-09-11), so the price bucket is what isolates Muse. In-app prices ($20 / $100) never bill under this descriptor. |
-| Not matched: GOOGLE *FACEBOOK, Apple, PP*METAPLATFOR, FACEBK * | Google Play pass-through showed no launch uplift, Apple card descriptors carry no app name, and the PayPal / FACEBK forms are ads and Quest. In-app Muse is measured from e-receipts instead. |
+| Not matched: GOOGLE *FACEBOOK, Apple, PP*METAPLATFOR, FACEBK * | Google Play bills every Meta app as GOOGLE *FACEBOOK, so its small launch uplift cannot be isolated from other Meta subscriptions (investigations/android_crosscheck.ipynb), Apple card descriptors carry no app name, and the PayPal / FACEBK forms are ads and Quest. In-app Muse is measured from e-receipts instead. |
 
 **Deduplication.** Distinct (member, day, amount, plan): Yodlee pending and posted copies of one charge can carry different transaction ids.
 
-**Measure.** MEMBERS = distinct panel members charged that day, per plan. TXNS = deduplicated charges. A charge is a new subscription or a monthly renewal; with a 2-week free trial, first charges start about 14 days after sign-up (first seen 2026-09-17).
+**Measure.** MEMBERS = distinct panel members charged that day, per plan. TXNS = deduplicated charges. A charge is a new subscription or a monthly renewal. Web Muse first charges appear around 2026-09-17, nine days after launch; the cause is not confirmed (possible billing delay, trial or slow web adoption).
 
 **Lag.** Complete through run date minus 5 days; later days are excluded.
 
@@ -53,6 +133,46 @@ Complete-through dates for this build: cards 2026-10-02, e-receipts 2026-10-06.
 
 **Lag.** Complete through run date minus 1 day.
 
+## Muse in-app subscriber flows (e-receipts)
+
+`sections.inapp_flows_daily`
+
+**Source.** The in-app e-receipts above (same filters: active mailboxes, 'Muse from Meta', Apple / Google Play).
+
+**Filters.**
+
+| Rule | Why |
+|---|---|
+| Gross add = the day of a mailbox's first charge receipt, per store and plan | Every mailbox's first paid Muse receipt is a new subscriber; later charges are renewals. The window starts before launch, so no subscriber predates it. |
+| Cancel = a cancellation-confirmation receipt | Stores email a confirmation when a user cancels; the plan usually runs to the end of the paid period, so a cancel is a churn notice, not an immediate loss. |
+| Trial-start receipts are left out | Muse is freemium, trials are not a standard offering, and the few trial receipts were judged noise (team review, 2026-10-07). |
+
+**Deduplication.** One first charge per mailbox, store and plan; cancels are distinct mailboxes per day.
+
+**Measure.** GROSS_ADDS = new paying mailboxes that day. CANCELS = cancellation notices. NET_ADDS = GROSS_ADDS - CANCELS. A plan switch counts as a gross add on the new plan. Whether Google Play and Apple both send a receipt for every renewal is under investigation, so renewals are not shown here.
+
+**Lag.** Complete through run date minus 1 day.
+
+## Muse web subscriber flows (card panels)
+
+`sections.web_flows_daily`
+
+**Source.** The web Muse card charges above (Yodlee feeds 3, 4 and 6, same descriptor and price filters), plus each charged member's first and last transaction date in the same panels (member_tenure, any merchant).
+
+**Filters.**
+
+| Rule | Why |
+|---|---|
+| Gross add = a payment with no payment in the previous 35 days, by a member first seen in the panel more than 35 days earlier | Cards have no sign-up event, so a new subscription is a payment after a gap. The tenure test stops an existing subscriber who has just joined the panel from counting as a sign-up; those payments are NEW_TO_PANEL instead. |
+| Cancellation = no payment within 35 days of a member's last payment, dated at last payment + 35 days, if the member is still transacting in the panel after that date | Monthly plans renew about every 30 days, so a missed renewal means the plan ended. Requiring later panel activity separates Muse churn from panel churn; lapses by members who have left the panel are PANEL_EXITS instead. |
+| Renewal = a payment within 35 days of the member's previous payment | The sequence is per member across plans, so a Power-to-Max switch counts as a renewal on the new plan, not a gross add. |
+
+**Deduplication.** Distinct (member, day, plan), as for subscriptions.
+
+**Measure.** GROSS_ADDS, CANCELS and NET_ADDS = GROSS_ADDS - CANCELS per day and plan; RENEWALS, NEW_TO_PANEL and PANEL_EXITS complete the reconciliation (every payment is a gross add, renewal or new-to-panel; every lapse a cancellation or panel exit). The first web payment was 2026-09-17, so the first possible cancellation is 2026-10-22.
+
+**Lag.** Complete through run date minus 5 days; a cancellation appears once its date is inside that window.
+
 ## Agentic Checkout to Non-Stripe Merchants
 
 `sections.agentic_daily`
@@ -69,7 +189,7 @@ Complete-through dates for this build: cards 2026-10-02, e-receipts 2026-10-06.
 
 **Deduplication.** Distinct (source, transaction id).
 
-**Measure.** TXNS = agentic transactions that day. PER_MILLION = TXNS per million panel transactions (same feeds, same day). Panel coverage still fills in for ~10 days, so the rate is the comparable series and raw counts in the latest days run low. PER_MILLION_TR7D is the ratio of 7-day sums, not a mean of daily ratios. SHOPIFY_SHARE_TR7D = Shopify-store share of 7-day agentic volume.
+**Measure.** TXNS = agentic transactions that day. PER_MILLION = TXNS per million panel transactions (same feeds, same day). Panel coverage still fills in for ~10 days, so the rate is the comparable series and raw counts in the latest days run low. PER_MILLION_TR7D is the ratio of 7-day sums, not a mean of daily ratios. SHOPIFY_SHARE_TR7D = Shopify-store share of 7-day agentic volume. The count is a floor: at merchants that take Stripe directly, an agent purchase carries the merchant's own descriptor and is invisible here; at the top agentic merchants Link-agent rows are under 0.01% of panel transactions (0.5% at Porkbun) since launch (investigations/stripe_vs_link_share.ipynb).
 
 **Lag.** Complete through run date minus 5 days.
 
@@ -87,27 +207,24 @@ Complete-through dates for this build: cards 2026-10-02, e-receipts 2026-10-06.
 
 **Deduplication.** As above.
 
-**Measure.** A breakdown table rather than a daily series: transactions and median amount per merchant over the 28 days ending at the card complete-through date.
+**Measure.** A breakdown table rather than a daily series: transactions, unique cardholders and median amount per merchant over the 28 days ending at the card complete-through date. CARDHOLDERS = distinct panel members (per source); TXNS well above CARDHOLDERS means repeat agent purchases by the same people.
 
 **Lag.** Complete through run date minus 5 days.
 
-## AI assistant app downloads and DAU (SensorTower)
+## Example agentic-checkout records
 
-`sections.app_usage_daily`
+`sections.agentic_samples`
 
-**Source.** SensorTower SENSORTOWER.COMMON.CORE (refreshed daily by sync_sensortower_core).
+**Source.** The agentic transactions above.
 
 **Filters.**
 
 | Rule | Why |
 |---|---|
-| Unified product 6aa0b99dd70c1a09e42dc613 ('Muse from Meta', com.facebook.aura / iOS 6760173601) | Muse is a new app, not a rename of Meta AI. It is live in the US (from 2026-09-07) and Canada (from 09-14) only. |
-| Unified product 613aafdee8b8ad2c7f063b8e ('Meta AI', com.facebook.stella) | The predecessor app, shown for cannibalisation: its US downloads fell by about 60% in launch week. |
-| Share set: Muse, ChatGPT (OpenAI), Gemini (Google), Claude (Anthropic), Grok (xAI), each by its unified product key: ChatGPT 64665f59b3ae2712001279ed, Gemini 65c58645bd9b7e3bc33c81b4, Claude 663279a2b3ae277df21f2bd0, Grok 676652c29ccf2a852260e663 | Matched by key, never by name: 'ChatGPT' alone is 12 SensorTower products, mostly clones, and there is a clone 'Muse from Meta'. Share = the app's TR7D over the sum of the five apps' TR7D, for the same metric and country. Meta AI is excluded from the share set (it is the app Muse sits beside, shown in its own chart). |
-| Country US and WW only | WW is SensorTower's worldwide aggregate row; summing countries would double count it. |
+| The latest LINKAGNT* record before 2026-09-23 and the latest LINK* record from that date | One example of each descriptor form, to show what the matching rules see. |
 
-**Deduplication.** iPhone and Android phone summed per app, country and day (a user active on both counts twice in DAU; small for a phone app).
+**Deduplication.** One row per form, from a card panel where one exists; no member or transaction ids are published, and masked card-number tails are blanked.
 
-**Measure.** DOWNLOADS = estimated first-time downloads; DAU = estimated daily active users. Values are modelled vendor estimates, best read as trends.
+**Measure.** DESCRIPTION is the raw card descriptor, MERCHANT the label extracted from it, IS_SHOPIFY the Shopify flag.
 
-**Lag.** Downloads run to about T-2 and DAU to T-3; the latest DAU day arrives as 0 and is treated as missing. TR7D is shown only where all 7 days are present.
+**Lag.** Complete through run date minus 5 days.

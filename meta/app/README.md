@@ -10,6 +10,8 @@ Prototype of `apps.srsinvest.com/internet/meta_muse/` before it moves into the m
 | `build_json.py` | Pulls loads into `.cache/`, runs the sections in DuckDB, writes `meta_muse.json` and `METHODOLOGY.md` |
 | `index.html` | Draft page (Chart.js, no build step). Same `DATA_KEY` switch as the Roblox page |
 | `METHODOLOGY.md` | Generated; do not edit by hand |
+| `web_traffic_snapshot.csv` | SimilarWeb muse.ai visits (US, WW) pulled via the API on 2026-10-08; used only until the Snowflake pipeline carries muse.ai |
+| `benchmark_snapshot.xlsx` | SensorTower portal export for Clubhouse (not in CORE): US daily downloads, DAU by country |
 | `.cache/` | Parquet cache of loads (git-ignored) |
 
 ## Run
@@ -52,6 +54,17 @@ The first run fills the cache from 2026-08-01. Later runs re-pull only the last
   load takes about 2.5 minutes a day on an analyst warehouse. `sections.SOURCE_279_PRIME_TAU`
   keeps it ready for the monorepo job, as a raw count only.
 
+## Status as of 2026-10-08
+
+- Team-review updates are built:
+  - Sections are reordered (usage and ad spend, benchmark, share, web traffic, subscriber flows, agentic) on one shared date axis.
+  - The separate web and in-app subscription charts are dropped; subscriber flows replace them. `muse_web_daily` and `muse_inapp_daily` stay in the payload because their methodology defines the card and e-receipt filters.
+  - New sources: Pathmatics ad spend, SimilarWeb muse.ai visits and a launch benchmark (Clubhouse from `benchmark_snapshot.xlsx`, day 0 = 2020-12-15).
+  - New flow sections: `inapp_flows_daily` and `web_flows_daily`. Web flows use `SUB_GAP_DAYS` and `TENURE_DAYS` (both 35) and the `member_tenure` load.
+  - The agentic merchant table has a cardholders column, and the page shows example records.
+- SimilarWeb muse.ai comes from the API snapshot until the Snowflake pipeline loads it (expected 2026-10-09 around 08:00). The next build switches automatically; the freshness line names the source.
+- Reading the Clubhouse workbook needs `openpyxl` (added to the exploration project). The parsed result is cached under `.cache/clubhouse/`.
+
 ## Caveats for the page footer
 
 - On 2026-09-23 Stripe renamed the descriptor from `LINKAGNT*` to `LINK*`. Both forms are matched.
@@ -59,5 +72,12 @@ The first run fills the cache from 2026-08-01. Later runs re-pull only the last
 - Cards cannot see in-app Muse (Apple descriptors carry no app name). E-receipts cannot see web
   Muse (Meta's direct billing sends no captured receipt). The two are complementary and are never
   added together.
-- Web Muse first charges appear around 2026-09-17, about two weeks after launch. That fits a free
-  trial; it is not slow adoption.
+- Web Muse first charges appear around 2026-09-17, nine days after launch. The cause is not
+  confirmed (possible billing delay, trial or slow web adoption).
+- Pathmatics ad spend is digital only, not TV. The team suspects budget has moved to TV.
+- Card flows use a 35-day rule. A gross add is a payment after 35 days with no payment, by a member
+  in the panel for over 35 days. A cancellation is 35 days with no payment, counted only if the member
+  is still active in the panel. The first possible card cancellation is 2026-10-22.
+- Apple's priced Muse receipts have no app name (`Power Plan` / `Maximum Plan`). The current filter
+  catches only Apple's unpriced sign-up confirmations, so the Apple series counts new subscriptions,
+  not payments (see `investigations/android_crosscheck.ipynb`). Fix pending sign-off.
