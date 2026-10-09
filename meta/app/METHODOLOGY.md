@@ -8,7 +8,30 @@ Muse launched on 2026-09-08. Card and e-receipt windows start 2026-08-01 to give
 
 **Why two sources for subscriptions?** They see different halves of the market: card panels see web sign-ups billed directly by Meta (`METAPAY META.COM`), but Apple card descriptors carry no app name. E-receipts see App Store and Google Play subscriptions by name, but Meta's own web billing sends no receipt the panel captures. Neither is double-counted against the other.
 
-Complete-through dates for this build: cards 2026-10-03, e-receipts 2026-10-07.
+Complete-through dates for this build: cards 2026-10-04, e-receipts 2026-10-08.
+
+## Launch benchmark: US downloads and DAU by day since launch (SensorTower)
+
+`sections.launch_benchmark`
+
+**Source.** SensorTower SENSORTOWER.COMMON.CORE for Muse, Sora, Threads, ChatGPT and Claude; Clubhouse from a SensorTower portal export (it is not in CORE).
+
+**Filters.**
+
+| Rule | Why |
+|---|---|
+| Unified product keys: Muse 6aa0b99dd70c1a09e42dc613, Sora 68dc489f4e04a24f7d0d0aeb, Threads 64a72c98ad4adb0e06dbc506, ChatGPT 64665f59b3ae2712001279ed, Claude 663279a2b3ae277df21f2bd0 | Matched by key, never by name (clones share names). |
+| US only; iPhone + Android phone | The export for Clubhouse is summed the same way (iPad excluded). |
+| Day 0 = first day with downloads; window day 0 to 120 | Each app's CORE history starts on its launch day. |
+| Clubhouse day 0 = 2020-12-15 | Its viral breakout, the first day of the sustained jump in US downloads, rather than its invite-only iOS release in spring 2020. |
+| Muse day 0 = 2026-09-08 (public launch) | SensorTower's first Muse day, 2026-09-07, is a partial pre-launch day (about 8k US downloads against about 115k on launch day), so day 0 is the first full day. Those ~8k downloads are left out of Muse's cumulative total, which understates it by under 1% after the first week. |
+| Retention proxy: Clubhouse not shown | Its day 0 is a breakout, not a release, so its cumulative downloads miss the installed base from before day 0 and DAU / cumulative downloads exceeds 100%. |
+
+**Deduplication.** Summed per app and day.
+
+**Measure.** DOWNLOADS = estimated first-time US downloads; CUM_DOWNLOADS = running total from day 0; DOWNLOADS_TR7D = mean of the last 7 days. DAU = estimated US daily active users that day. RETENTION = DAU / CUM_DOWNLOADS on the same day: a proxy for the share of everyone who has downloaded the app who is still using it daily. It is not cohort retention (re-installs and multi-device users blur it) and is best compared across apps at the same day since launch. Muse has fewer days than the others.
+
+**Lag.** Downloads run to about T-2 and DAU to about T-3; the latest DAU day arrives as 0 and is treated as missing.
 
 ## AI assistant app downloads and DAU (SensorTower)
 
@@ -50,32 +73,11 @@ Complete-through dates for this build: cards 2026-10-03, e-receipts 2026-10-07.
 
 **Lag.** Vendor series; the latest day shown is the latest Pathmatics has published (about T-3).
 
-## Launch benchmark: US downloads by day since launch (SensorTower)
-
-`sections.launch_benchmark`
-
-**Source.** SensorTower SENSORTOWER.COMMON.CORE for Muse, Sora, Threads, ChatGPT and Claude; Clubhouse from a SensorTower portal export (it is not in CORE).
-
-**Filters.**
-
-| Rule | Why |
-|---|---|
-| Unified product keys: Muse 6aa0b99dd70c1a09e42dc613, Sora 68dc489f4e04a24f7d0d0aeb, Threads 64a72c98ad4adb0e06dbc506, ChatGPT 64665f59b3ae2712001279ed, Claude 663279a2b3ae277df21f2bd0 | Matched by key, never by name (clones share names). |
-| US only; iPhone + Android phone | The export for Clubhouse is summed the same way (iPad excluded). |
-| Day 0 = first day with downloads; window day 0 to 120 | Each app's CORE history starts on its launch day. |
-| Clubhouse day 0 = 2020-12-15 | Its viral breakout, the first day of the sustained jump in US downloads, rather than its invite-only iOS release in spring 2020. |
-
-**Deduplication.** Summed per app and day.
-
-**Measure.** DOWNLOADS = estimated first-time US downloads; CUM_DOWNLOADS = running total from day 0; DOWNLOADS_TR7D = mean of the last 7 days. Muse has fewer days than the others.
-
-**Lag.** Downloads run to about T-2.
-
 ## muse.ai web traffic (SimilarWeb)
 
 `sections.web_traffic_daily`
 
-**Source.** SimilarWeb daily visits, SIMILARWEB.SNOWFLAKE_INTEGRATION.DOWNSTREAM_DAILY (metric ALL_TRAFFIC_VISITS). Until the pipeline loads muse.ai, the build uses a SimilarWeb API snapshot with the same definition; the freshness line names the source used.
+**Source.** SimilarWeb daily visits, SIMILARWEB.SNOWFLAKE_INTEGRATION.DOWNSTREAM_DAILY (metric ALL_TRAFFIC_VISITS).
 
 **Filters.**
 
@@ -157,19 +159,21 @@ Complete-through dates for this build: cards 2026-10-03, e-receipts 2026-10-07.
 
 `sections.web_flows_daily`
 
-**Source.** The web Muse card charges above (Yodlee feeds 3, 4 and 6, same descriptor and price filters), plus each charged member's first and last transaction date in the same panels (member_tenure, any merchant).
+**Source.** The web Muse card charges above (Yodlee feeds 3, 4 and 6, same descriptor and price filters), plus each charged member's panel activity: the days they transacted with any merchant in the same panels (muse_member_panel). There is no card-panel active-member table to reuse (srs_slice.common.normal_active is NIQ mailboxes only), and Yodlee's own membership tables (LAST_REFRESH, ACCOUNT_ATTRIBUTES) are incomplete: on 2026-10-09 they were missing 15 and 26 of 69 payers who were still transacting daily.
 
 **Filters.**
 
 | Rule | Why |
 |---|---|
-| Gross add = a payment with no payment in the previous 35 days, by a member first seen in the panel more than 35 days earlier | Cards have no sign-up event, so a new subscription is a payment after a gap. The tenure test stops an existing subscriber who has just joined the panel from counting as a sign-up; those payments are NEW_TO_PANEL instead. |
-| Cancellation = no payment within 35 days of a member's last payment, dated at last payment + 35 days, if the member is still transacting in the panel after that date | Monthly plans renew about every 30 days, so a missed renewal means the plan ended. Requiring later panel activity separates Muse churn from panel churn; lapses by members who have left the panel are PANEL_EXITS instead. |
+| Gross add = a payment with no payment in the previous 35 days, by a member first seen transacting in the panel more than 35 days earlier | Cards have no sign-up event, so a new subscription is a payment after a gap. The membership test stops an existing subscriber who has just joined the panel from counting as a sign-up; those payments are NEW_TO_PANEL instead. |
+| Cancellation = no payment within 35 days of a member's last payment, dated at last payment + 35 days, if the member is active: at least one transaction with any merchant in the 30 days ending on that date | Monthly plans renew about every 30 days, so a missed renewal means the plan ended. The activity test separates Muse churn from panel churn, and its window sits wholly inside complete data, so a recent lapse needs no settling period. |
+| Panel exit = the same lapse by a member with no transaction in that window; the gross add that started their subscription is then removed (EXITED_ADDS) | A member who has left the panel tells us nothing about whether they cancelled, so neither their lapse nor their sign-up is counted. This rewrites history: a gross add drops off its original date once the member is found to have left. |
+| A lapse ending a subscription that began as NEW_TO_PANEL is UNSEEN_LAPSES, not a cancellation | We never saw that subscription start (the member joined the panel already subscribed), so it has no gross add; counting its end as a cancellation would bias net adds down. Both ends of a subscription are counted only when we saw it start. |
 | Renewal = a payment within 35 days of the member's previous payment | The sequence is per member across plans, so a Power-to-Max switch counts as a renewal on the new plan, not a gross add. |
 
 **Deduplication.** Distinct (member, day, plan), as for subscriptions.
 
-**Measure.** GROSS_ADDS, CANCELS and NET_ADDS = GROSS_ADDS - CANCELS per day and plan; RENEWALS, NEW_TO_PANEL and PANEL_EXITS complete the reconciliation (every payment is a gross add, renewal or new-to-panel; every lapse a cancellation or panel exit). The first web payment was 2026-09-17, so the first possible cancellation is 2026-10-22.
+**Measure.** GROSS_ADDS, CANCELS and NET_ADDS = GROSS_ADDS - CANCELS per day and plan; RENEWALS, NEW_TO_PANEL, PANEL_EXITS, EXITED_ADDS and UNSEEN_LAPSES complete the reconciliation (every payment is a gross add, exited add, renewal or new-to-panel; every lapse a cancellation, panel exit or unseen lapse). The first web payment was 2026-09-17, so the first possible cancellation is 2026-10-22.
 
 **Lag.** Complete through run date minus 5 days; a cancellation appears once its date is inside that window.
 
@@ -185,15 +189,14 @@ Complete-through dates for this build: cards 2026-10-03, e-receipts 2026-10-07.
 |---|---|
 | Description contains LINKAGNT* | Stripe Link's agent-wallet descriptor ('LINKAGNT* <merchant> WWW.LINK.COM CA'), used until 2026-09-23. |
 | Or LINK* followed by a space, anchored on WWW.LINK.CO or SOUTH SAN FRA | From 09-23/24 Stripe shortened the descriptor to 'LINK* <merchant>'. Bare LINK* also matches Cash App and other unrelated billers, so it must carry Stripe's URL or city. LINK.COM* is the ordinary Link wallet and is excluded by the 'space after *' rule. |
-| Shopify flag: 'LINK* SP <store>' or a Shopify / Shop Pay marker | SP is Shopify's store prefix, so these are agent purchases at Shopify merchants. |
 
 **Deduplication.** Distinct (source, transaction id).
 
-**Measure.** TXNS = agentic transactions that day. PER_MILLION = TXNS per million panel transactions (same feeds, same day). Panel coverage still fills in for ~10 days, so the rate is the comparable series and raw counts in the latest days run low. PER_MILLION_TR7D is the ratio of 7-day sums, not a mean of daily ratios. SHOPIFY_SHARE_TR7D = Shopify-store share of 7-day agentic volume. The count is a floor: at merchants that take Stripe directly, an agent purchase carries the merchant's own descriptor and is invisible here; at the top agentic merchants Link-agent rows are under 0.01% of panel transactions (0.5% at Porkbun) since launch (investigations/stripe_vs_link_share.ipynb).
+**Measure.** TXNS = agentic transactions that day. PER_MILLION = TXNS per million panel transactions (same feeds, same day). Panel coverage still fills in for ~10 days, so the rate is the comparable series and raw counts in the latest days run low. PER_MILLION_TR7D is the ratio of 7-day sums, not a mean of daily ratios. The count is a floor: at merchants that take Stripe directly, an agent purchase carries the merchant's own descriptor and is invisible here; at the top agentic merchants Link-agent rows are under 0.01% of panel transactions (0.5% at Porkbun) since launch (investigations/stripe_vs_link_share.ipynb).
 
 **Lag.** Complete through run date minus 5 days.
 
-## Top agentic-checkout merchants (trailing 28 days)
+## Top agentic-checkout merchants (since launch and trailing 28 days)
 
 `sections.agentic_merchants`
 
@@ -207,7 +210,7 @@ Complete-through dates for this build: cards 2026-10-03, e-receipts 2026-10-07.
 
 **Deduplication.** As above.
 
-**Measure.** A breakdown table rather than a daily series: transactions, unique cardholders and median amount per merchant over the 28 days ending at the card complete-through date. CARDHOLDERS = distinct panel members (per source); TXNS well above CARDHOLDERS means repeat agent purchases by the same people.
+**Measure.** A breakdown table rather than a daily series: the top 25 merchants by transactions, with unique cardholders and median amount, for two windows ending at the card complete-through date: PERIOD = 'Since launch' (from 2026-09-08, growing each day) or 'Last 28 days'. CARDHOLDERS = distinct panel members (per source); TXNS well above CARDHOLDERS means repeat agent purchases by the same people. SPEND_SHARE = the merchant's agentic $ over all agentic $ observed in the same window (every Link-agent transaction, including the few with no readable merchant label), so it is a share of observed agentic spend, not of the merchant's total sales.
 
 **Lag.** Complete through run date minus 5 days.
 
@@ -225,6 +228,6 @@ Complete-through dates for this build: cards 2026-10-03, e-receipts 2026-10-07.
 
 **Deduplication.** One row per form, from a card panel where one exists; no member or transaction ids are published, and masked card-number tails are blanked.
 
-**Measure.** DESCRIPTION is the raw card descriptor, MERCHANT the label extracted from it, IS_SHOPIFY the Shopify flag.
+**Measure.** DESCRIPTION is the raw card descriptor, MERCHANT the label extracted from it.
 
 **Lag.** Complete through run date minus 5 days.

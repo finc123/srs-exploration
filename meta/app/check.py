@@ -20,7 +20,7 @@ print(pd.DataFrame(p["summary"]).to_string(index=False))
 
 print("\nagentic weekly (notebook, Yodlee: 08-31 16 | 09-07 89 | 09-14 153 | 09-21 295):")
 ag = S["agentic_daily"]
-w = weekly(ag, ["TXNS", "SHOPIFY_TXNS", "PANEL_TXNS"])
+w = weekly(ag, ["TXNS", "PANEL_TXNS"])
 w["PER_MILLION"] = (w.TXNS / w.PANEL_TXNS * 1e6).round(2)
 print(w.tail(8).to_string())
 
@@ -51,6 +51,7 @@ print("\ntop merchants:")
 am = S["agentic_merchants"]
 print(am.head(10).to_string(index=False))
 print("CARDHOLDERS <= TXNS for every merchant:", bool((am.CARDHOLDERS <= am.TXNS).all()))
+print("top-25 SPEND_SHARE sum per period (should be <= 100%):", am.groupby("PERIOD").SPEND_SHARE.sum().map("{:.1%}".format).to_dict())
 print("\nexample records:")
 print(S["agentic_samples"].to_string(index=False))
 
@@ -62,10 +63,10 @@ print("cancels match muse_inapp_daily:", int(fl.CANCELS.sum()) == int(ia.CANCELS
 
 print("\nweb flows:")
 wf = S["web_flows_daily"]
-cols = ["GROSS_ADDS", "CANCELS", "NET_ADDS", "RENEWALS", "NEW_TO_PANEL", "PANEL_EXITS"]
+cols = ["GROSS_ADDS", "CANCELS", "NET_ADDS", "RENEWALS", "NEW_TO_PANEL", "PANEL_EXITS", "EXITED_ADDS", "UNSEEN_LAPSES"]
 print(wf.groupby("PLAN")[cols].sum().to_string())
-paid = int(wf[["GROSS_ADDS", "RENEWALS", "NEW_TO_PANEL"]].sum().sum())
-print("gross adds + renewals + new-to-panel = distinct (member, day, plan) payments:", paid,
+paid = int(wf[["GROSS_ADDS", "EXITED_ADDS", "RENEWALS", "NEW_TO_PANEL"]].sum().sum())
+print("gross + exited adds + renewals + new-to-panel = distinct (member, day, plan) payments:", paid,
       "vs muse_web TXNS", int(web.TXNS.sum()), "(TXNS also splits by amount, so can be slightly higher)")
 print("no lapses before 2026-10-22:", int(wf.loc[wf.DATE < "2026-10-22", ["CANCELS", "PANEL_EXITS"]].sum().sum()) == 0)
 
@@ -85,3 +86,6 @@ print(bm.groupby("APP").agg(DAY0=("DATE", "min"), DAYS=("DAY_N", "max"), MIN_DAY
                             CUM=("CUM_DOWNLOADS", "max")).to_string())
 d30 = bm[bm.DAY_N == 30].set_index("APP").CUM_DOWNLOADS
 print("cumulative downloads at day 30:", d30.map("{:,.0f}".format).to_dict())
+for n in (7, 21):
+    print(f"retention proxy (DAU / cum downloads) at day {n}:",
+          bm[bm.DAY_N == n].set_index("APP").RETENTION.map("{:.1%}".format).to_dict())

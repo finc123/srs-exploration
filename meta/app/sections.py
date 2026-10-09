@@ -3,19 +3,20 @@
 Two layers, mirroring the planned monorepo workflow (`workflows/jobs/meta/meta_muse.yaml`):
 
 1. LOADS (Snowflake SQL). Narrow row-level pulls from the raw panels into what
-   will become `srs_slice.meta.*` tables:
+   will become `srs_slice.meta.muse_*` tables:
      card_txns     one row per matched card/bank transaction (signal = muse_web | agentic)
      panel_totals  distinct transactions per source per day (denominator for per-million)
-     member_tenure first / last transaction day per web Muse payer per source (panel presence)
+     member_panel  days each web Muse payer transacted (any merchant), per source (panel activity)
      niq_receipts  one row per Muse e-receipt line item
      app_usage     SensorTower downloads / DAU per app x country x day
      benchmark     SensorTower US downloads per benchmark app x day, day 0 to +120 (+ Clubhouse export)
      ad_spend      Pathmatics Muse digital ad spend per country x publisher x day
-     web_traffic   SimilarWeb muse.ai visits per country x day (snapshot fallback)
-   Card loads run one query per source per day (multi-day ILIKE scans on the
-   279 tables time out) and are cached locally by build_json.py.
+     web_traffic   SimilarWeb muse.ai visits per country x day
+   Each table is named with a muse_ prefix (srs_slice.meta.muse_card_txns, ...): the
+   schema is shared with other Meta datasets. Card loads are one pruned range query
+   per source, cached locally per day by build_json.py.
 
-2. SECTIONS (portable SQL over the srs_slice.meta.* tables). Run by DuckDB over
+2. SECTIONS (portable SQL over the srs_slice.meta.muse_* tables). Run by DuckDB over
    the cached loads here, and by Snowflake in the monorepo exporter, so the
    strings are written in the common subset of both dialects (CASE, COUNT
    DISTINCT, CAST AS VARCHAR, MEDIAN). Column aliases are UPPERCASE because
@@ -44,6 +45,8 @@ TR_DAYS = 7                    # trailing window for every *_TR7D column
 SUB_GAP_DAYS = 35              # card subs: a payment after this many days without one is a new subscription,
                                # and no payment for this long after the last one is a lapse
 TENURE_DAYS = 35               # card subs: a gross add needs the member in the panel this long before paying
+ACTIVE_DAYS = 30               # card subs: a member is active (still in the panel) with >= 1 transaction in this
+                               # many days ending on the lapse date; else the lapse is a panel exit
 
 MUSE_KEY = "6aa0b99dd70c1a09e42dc613"     # SensorTower "Muse from Meta" (com.facebook.aura)
 META_AI_KEY = "613aafdee8b8ad2c7f063b8e"  # SensorTower "Meta AI" (com.facebook.stella)
@@ -76,6 +79,7 @@ BENCHMARK_KEYS = {
 BENCHMARK_DAYS = 120
 BENCHMARK_SNAPSHOT = "benchmark_snapshot.xlsx"
 BENCHMARK_DAY0 = {"Clubhouse": "2020-12-15"}   # first day of the sustained jump in US downloads (15k -> 25k)
+# Muse's day 0 is the public launch (LAUNCH), not its partial first SensorTower day (09-07); applied in the section SQL.
 
 # Web price ladder (US$, pre-tax list $16 / $80); upper bounds allow for sales tax,
 # lower bounds sit just under list so off-price Meta charges (e.g. $15.90) are excluded.
@@ -155,12 +159,6 @@ def merchant_sql(col: str) -> str:
             r"1, 1, 'e', 3))")
 
 
-def shopify_sql(col: str) -> str:
-    """Agentic purchase at a Shopify store: 'LINK* SP <store>' or an explicit Shopify / Shop Pay marker."""
-    return (rf"(REGEXP_LIKE({col}, '.*(linkagnt|link)\\* ?sp .*', 'i') "
-            f"OR {col} ILIKE '%shopify%' OR {col} ILIKE '%shop pay%')")
-
-
 # ---------------------------------------------------------------------------
 # LOADS (Snowflake)
 # ---------------------------------------------------------------------------
@@ -179,31 +177,35 @@ def card_rows_sql(src: dict, start: str, end: str) -> str:
                CAST({src['member']} AS VARCHAR) AS member,
                CAST({src['txn']} AS VARCHAR) AS txn_id,
                {src['date']}::DATE AS day,
+               {src['prune'] or 'NULL'}::DATE AS file_date,
                ROUND({a}, 2) AS amount,
                {d} AS description,
                IFF({agentic_sql(d)}, 'agentic', 'muse_web') AS signal,
                IFF({agentic_sql(d)}, NULL, {plan_sql(a)}) AS plan,
-               IFF({agentic_sql(d)}, {merchant_sql(d)}, NULL) AS merchant,
-               IFF({agentic_sql(d)}, {shopify_sql(d)}, FALSE) AS is_shopify
+               IFF({agentic_sql(d)}, {merchant_sql(d)}, NULL) AS merchant
         FROM {src['table']}
         WHERE {_window(src, start, end)}
           AND ({agentic_sql(d)} OR {muse_web_sql(d, a)})
     """
 
 
-# Panel presence for web Muse payers: first and last transaction (any merchant) per member per source,
-# from early enough that the TENURE_DAYS test is decidable for every payment in the card window.
+# Panel activity for web Muse payers: one row per member per source per day they transacted (any merchant),
+# from early enough that the TENURE_DAYS test is decidable for every payment in the card window. The web
+# flows read first_seen (MIN day) and the ACTIVE_DAYS window before each lapse from it.
+# Yodlee's own membership metadata is not used: on 2026-10-09 its LAST_REFRESH files were missing 15 of 69
+# payers (and ACCOUNT_ATTRIBUTES 26) who were still transacting daily, so observed transactions are the
+# only complete record of who is in the panel.
 TENURE_START = (date.fromisoformat(CARD_START) - timedelta(days=TENURE_DAYS)).isoformat()
 
 
-def member_tenure_sql(src: dict, members: list[str], end: str) -> str:
+def member_panel_sql(src: dict, members: list[str], end: str) -> str:
     ids = ", ".join(f"'{m}'" for m in members)
     return f"""
         SELECT '{src['name']}' AS source, CAST({src['member']} AS VARCHAR) AS member,
-               MIN({src['date']})::DATE AS first_seen, MAX({src['date']})::DATE AS last_seen
+               {src['date']}::DATE AS day, COUNT(*) AS txns
         FROM {src['table']}
         WHERE {_window(src, TENURE_START, end)} AND {src['member']} IN ({ids})
-        GROUP BY 1, 2
+        GROUP BY 1, 2, 3
     """
 
 
@@ -282,10 +284,8 @@ AD_SPEND_SQL = f"""
     GROUP BY 1, 2, 3
 """
 
-# SimilarWeb daily visits. muse.ai was added to the pipeline config on 2026-10-08; until it
-# lands, build_json.py falls back to WEB_TRAFFIC_SNAPSHOT (an MCP pull, same columns).
+# SimilarWeb daily visits (muse.ai in the Snowflake pipeline from 2026-10-08).
 WEB_DOMAINS = ["muse.ai"]
-WEB_TRAFFIC_SNAPSHOT = "web_traffic_snapshot.csv"
 WEB_TRAFFIC_SQL = f"""
     SELECT date::DATE AS date, domain, country, value AS visits
     FROM similarweb.snowflake_integration.downstream_daily
@@ -316,7 +316,7 @@ SECTIONS: list[dict] = [
             SELECT CAST(day AS VARCHAR) AS DATE, plan AS PLAN,
                    COUNT(DISTINCT member) AS MEMBERS, COUNT(*) AS TXNS
             FROM (SELECT DISTINCT member, day, amount, plan
-                  FROM srs_slice.meta.card_txns
+                  FROM srs_slice.meta.muse_card_txns
                   WHERE signal = 'muse_web' AND day BETWEEN '{card_start}' AND '{card_through}'
                     AND """ + bucket_filter_sql() + """) t
             GROUP BY 1, 2 ORDER BY 1, 2
@@ -362,7 +362,7 @@ SECTIONS: list[dict] = [
                    COUNT(DISTINCT CASE WHEN kind = 'charge' THEN mailbox_id END) AS CHARGES,
                    COUNT(DISTINCT CASE WHEN kind = 'cancel' THEN mailbox_id END) AS CANCELS,
                    COUNT(DISTINCT CASE WHEN kind = 'trial' THEN mailbox_id END) AS TRIALS
-            FROM srs_slice.meta.niq_receipts
+            FROM srs_slice.meta.muse_niq_receipts
             WHERE order_date BETWEEN '{card_start}' AND '{niq_through}' AND store <> 'Other'
             GROUP BY 1, 2, 3 ORDER BY 1, 2, 3
         """,
@@ -400,7 +400,7 @@ SECTIONS: list[dict] = [
         sql="""
             WITH r AS (
                 SELECT DISTINCT order_date, mailbox_id, store, plan, kind
-                FROM srs_slice.meta.niq_receipts
+                FROM srs_slice.meta.muse_niq_receipts
                 WHERE order_date BETWEEN '{card_start}' AND '{niq_through}' AND store <> 'Other'
             ), g AS (
                 SELECT first_day AS day, store, plan, COUNT(*) AS gross_adds
@@ -444,74 +444,123 @@ SECTIONS: list[dict] = [
     dict(
         key="web_flows_daily",
         title="Muse web subscriber flows (card panels)",
-        keys=["PLAN"], measures=["GROSS_ADDS", "CANCELS", "NET_ADDS", "RENEWALS", "NEW_TO_PANEL", "PANEL_EXITS"],
+        keys=["PLAN"],
+        measures=["GROSS_ADDS", "CANCELS", "NET_ADDS", "RENEWALS", "NEW_TO_PANEL", "PANEL_EXITS", "EXITED_ADDS",
+                  "UNSEEN_LAPSES"],
         fill_zero=True, start="card_start", through="card_through",
         sql=f"""
             WITH c AS (
                 SELECT DISTINCT member, day, plan
-                FROM srs_slice.meta.card_txns
+                FROM srs_slice.meta.muse_card_txns
                 WHERE signal = 'muse_web' AND day BETWEEN '{{card_start}}' AND '{{card_through}}'
                   AND {bucket_filter_sql()}
+            ), d AS (
+                -- days each payer transacted with any merchant (panel activity)
+                SELECT DISTINCT member, day FROM srs_slice.meta.muse_member_panel
             ), t AS (
-                SELECT member, MIN(first_seen) AS first_seen, MAX(last_seen) AS last_seen
-                FROM srs_slice.meta.member_tenure GROUP BY member
-            ), l AS (
-                SELECT c.member, c.day, c.plan, t.first_seen, t.last_seen,
+                SELECT member, MIN(day) AS first_seen FROM d GROUP BY member
+            ), p AS (
+                SELECT c.member, c.day, c.plan,
                        CASE WHEN LAG(c.day) OVER (PARTITION BY c.member ORDER BY c.day) IS NOT NULL
                              AND DATEDIFF('day', LAG(c.day) OVER (PARTITION BY c.member ORDER BY c.day), c.day)
                                  <= {SUB_GAP_DAYS} THEN 1 ELSE 0 END AS is_renewal,
                        CASE WHEN DATEDIFF('day', t.first_seen, c.day) > {TENURE_DAYS} THEN 1 ELSE 0 END AS is_tenured,
                        LEAD(c.day) OVER (PARTITION BY c.member ORDER BY c.day) AS next_day
                 FROM c LEFT JOIN t ON t.member = c.member
-            ), ev AS (
-                -- payments: renewal, gross add (tenured member, no payment in the gap), or too new to the panel to tell
-                SELECT day, plan,
-                       CASE WHEN is_renewal = 0 AND is_tenured = 1 THEN 1 ELSE 0 END AS gross_adds,
-                       0 AS cancels,
-                       is_renewal AS renewals,
-                       CASE WHEN is_renewal = 0 AND is_tenured = 0 THEN 1 ELSE 0 END AS new_to_panel,
-                       0 AS panel_exits
-                FROM l
-                UNION ALL
-                -- lapses: no payment within the gap after this one, dated at the end of the gap; a cancellation
-                -- only if the member is still transacting in the panel after that date, else panel attrition
-                SELECT day + {SUB_GAP_DAYS} AS day, plan, 0,
-                       CASE WHEN last_seen > day + {SUB_GAP_DAYS} THEN 1 ELSE 0 END,
-                       0, 0,
-                       CASE WHEN last_seen > day + {SUB_GAP_DAYS} THEN 0 ELSE 1 END
+            ), s AS (
+                -- spell = one subscription: a non-renewal payment and the renewals after it
+                SELECT p.*, SUM(1 - is_renewal) OVER (PARTITION BY member ORDER BY day
+                                                      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS spell
+                FROM p
+            ), l AS (
+                -- unseen_start = the spell began with a NEW_TO_PANEL payment, so we never saw it start
+                SELECT s.*, MAX(CASE WHEN is_renewal = 0 THEN 1 - is_tenured END)
+                                OVER (PARTITION BY member, spell) AS unseen_start
+                FROM s
+            ), lapse AS (
+                -- no payment within the gap after this one: the spell ended, dated at the end of the gap
+                SELECT member, spell, plan, unseen_start, day + {SUB_GAP_DAYS} AS lapse_day
                 FROM l
                 WHERE (next_day IS NULL OR DATEDIFF('day', day, next_day) > {SUB_GAP_DAYS})
                   AND day + {SUB_GAP_DAYS} <= '{{card_through}}'
+            ), lapse_act AS (
+                -- active member = at least one transaction (any merchant) in the {ACTIVE_DAYS} days ending on the lapse
+                SELECT x.member, x.spell, x.plan, x.unseen_start, x.lapse_day, COUNT(d.day) AS active_days
+                FROM lapse x
+                LEFT JOIN d ON d.member = x.member
+                           AND d.day BETWEEN x.lapse_day - {ACTIVE_DAYS - 1} AND x.lapse_day
+                GROUP BY 1, 2, 3, 4, 5
+            ), exited AS (
+                SELECT DISTINCT member, spell FROM lapse_act WHERE active_days = 0
+            ), ev AS (
+                -- payments: renewal, gross add (tenured member, no payment in the gap), or too new to the panel
+                -- to tell; a gross add whose spell ended with the member gone from the panel is EXITED_ADDS
+                SELECT l.day, l.plan,
+                       CASE WHEN is_renewal = 0 AND is_tenured = 1 AND e.member IS NULL THEN 1 ELSE 0 END AS gross_adds,
+                       0 AS cancels,
+                       is_renewal AS renewals,
+                       CASE WHEN is_renewal = 0 AND is_tenured = 0 THEN 1 ELSE 0 END AS new_to_panel,
+                       0 AS panel_exits,
+                       CASE WHEN is_renewal = 0 AND is_tenured = 1 AND e.member IS NOT NULL THEN 1 ELSE 0 END
+                           AS exited_adds,
+                       0 AS unseen_lapses
+                FROM l LEFT JOIN exited e ON e.member = l.member AND e.spell = l.spell
+                UNION ALL
+                -- lapses: a cancellation if the member was active in the panel, else a panel exit; a spell we
+                -- never saw start (no gross add counted) ends as UNSEEN_LAPSES, so both ends are excluded
+                SELECT lapse_day, plan, 0,
+                       CASE WHEN unseen_start = 0 AND active_days > 0 THEN 1 ELSE 0 END,
+                       0, 0,
+                       CASE WHEN unseen_start = 0 AND active_days = 0 THEN 1 ELSE 0 END,
+                       0,
+                       unseen_start
+                FROM lapse_act
             )
             SELECT CAST(day AS VARCHAR) AS DATE, plan AS PLAN,
                    SUM(gross_adds) AS GROSS_ADDS, SUM(cancels) AS CANCELS,
                    SUM(gross_adds) - SUM(cancels) AS NET_ADDS,
-                   SUM(renewals) AS RENEWALS, SUM(new_to_panel) AS NEW_TO_PANEL, SUM(panel_exits) AS PANEL_EXITS
+                   SUM(renewals) AS RENEWALS, SUM(new_to_panel) AS NEW_TO_PANEL, SUM(panel_exits) AS PANEL_EXITS,
+                   SUM(exited_adds) AS EXITED_ADDS, SUM(unseen_lapses) AS UNSEEN_LAPSES
             FROM ev GROUP BY 1, 2 ORDER BY 1, 2
         """,
         methodology=dict(
             source="The web Muse card charges above (Yodlee feeds 3, 4 and 6, same descriptor and price filters), "
-                   "plus each charged member's first and last transaction date in the same panels "
-                   "(member_tenure, any merchant).",
+                   "plus each charged member's panel activity: the days they transacted with any merchant in "
+                   "the same panels (muse_member_panel). There is no card-panel active-member table to reuse "
+                   "(srs_slice.common.normal_active is NIQ mailboxes only), and Yodlee's own membership tables "
+                   "(LAST_REFRESH, ACCOUNT_ATTRIBUTES) are incomplete: on 2026-10-09 they were missing 15 and "
+                   "26 of 69 payers who were still transacting daily.",
             filters=[
                 (f"Gross add = a payment with no payment in the previous {SUB_GAP_DAYS} days, by a member first "
-                 f"seen in the panel more than {TENURE_DAYS} days earlier",
-                 "Cards have no sign-up event, so a new subscription is a payment after a gap. The tenure test "
-                 "stops an existing subscriber who has just joined the panel from counting as a sign-up; those "
-                 "payments are NEW_TO_PANEL instead."),
+                 f"seen transacting in the panel more than {TENURE_DAYS} days earlier",
+                 "Cards have no sign-up event, so a new subscription is a payment after a gap. The membership "
+                 "test stops an existing subscriber who has just joined the panel from counting as a sign-up; "
+                 "those payments are NEW_TO_PANEL instead."),
                 (f"Cancellation = no payment within {SUB_GAP_DAYS} days of a member's last payment, dated at last "
-                 f"payment + {SUB_GAP_DAYS} days, if the member is still transacting in the panel after that date",
-                 "Monthly plans renew about every 30 days, so a missed renewal means the plan ended. Requiring "
-                 "later panel activity separates Muse churn from panel churn; lapses by members who have left "
-                 "the panel are PANEL_EXITS instead."),
+                 f"payment + {SUB_GAP_DAYS} days, if the member is active: at least one transaction with any "
+                 f"merchant in the {ACTIVE_DAYS} days ending on that date",
+                 "Monthly plans renew about every 30 days, so a missed renewal means the plan ended. The activity "
+                 "test separates Muse churn from panel churn, and its window sits wholly inside complete data, "
+                 "so a recent lapse needs no settling period."),
+                ("Panel exit = the same lapse by a member with no transaction in that window; the gross add that "
+                 "started their subscription is then removed (EXITED_ADDS)",
+                 "A member who has left the panel tells us nothing about whether they cancelled, so neither their "
+                 "lapse nor their sign-up is counted. This rewrites history: a gross add drops off its original "
+                 "date once the member is found to have left."),
+                ("A lapse ending a subscription that began as NEW_TO_PANEL is UNSEEN_LAPSES, not a cancellation",
+                 "We never saw that subscription start (the member joined the panel already subscribed), so it "
+                 "has no gross add; counting its end as a cancellation would bias net adds down. Both ends of a "
+                 "subscription are counted only when we saw it start."),
                 (f"Renewal = a payment within {SUB_GAP_DAYS} days of the member's previous payment",
                  "The sequence is per member across plans, so a Power-to-Max switch counts as a renewal on the "
                  "new plan, not a gross add."),
             ],
             dedupe="Distinct (member, day, plan), as for subscriptions.",
             measure=f"GROSS_ADDS, CANCELS and NET_ADDS = GROSS_ADDS - CANCELS per day and plan; RENEWALS, "
-                    f"NEW_TO_PANEL and PANEL_EXITS complete the reconciliation (every payment is a gross add, "
-                    f"renewal or new-to-panel; every lapse a cancellation or panel exit). The first web payment "
+                    f"NEW_TO_PANEL, PANEL_EXITS, EXITED_ADDS and UNSEEN_LAPSES complete the reconciliation (every "
+                    f"payment is a gross add, exited add, renewal or new-to-panel; every lapse a cancellation, panel "
+                    f"exit or unseen lapse). "
+                    f"The first web payment "
                     f"was 2026-09-17, so the first possible cancellation is 2026-10-22.",
             lag=f"Complete through run date minus {CARD_LAG_DAYS} days; a cancellation appears once its date "
                 f"is inside that window.",
@@ -520,22 +569,19 @@ SECTIONS: list[dict] = [
     dict(
         key="agentic_daily",
         title="Agentic Checkout to Non-Stripe Merchants",
-        keys=[], measures=["TXNS", "SHOPIFY_TXNS", "PANEL_TXNS"], fill_zero=True,
+        keys=[], measures=["TXNS", "PANEL_TXNS"], fill_zero=True,
         start="card_start", through="card_through",
         sql="""
             WITH t AS (
-                SELECT day,
-                       COUNT(DISTINCT source || '|' || txn_id) AS txns,
-                       COUNT(DISTINCT CASE WHEN is_shopify THEN source || '|' || txn_id END) AS shopify_txns
-                FROM srs_slice.meta.card_txns
+                SELECT day, COUNT(DISTINCT source || '|' || txn_id) AS txns
+                FROM srs_slice.meta.muse_card_txns
                 WHERE signal = 'agentic'
                 GROUP BY day
             ), p AS (
-                SELECT day, SUM(total_txn) AS panel_txns FROM srs_slice.meta.panel_totals GROUP BY day
+                SELECT day, SUM(total_txn) AS panel_txns FROM srs_slice.meta.muse_panel_totals GROUP BY day
             )
             SELECT CAST(p.day AS VARCHAR) AS DATE,
                    COALESCE(t.txns, 0) AS TXNS,
-                   COALESCE(t.shopify_txns, 0) AS SHOPIFY_TXNS,
                    p.panel_txns AS PANEL_TXNS
             FROM p LEFT JOIN t ON t.day = p.day
             WHERE p.day BETWEEN '{card_start}' AND '{card_through}'
@@ -544,7 +590,6 @@ SECTIONS: list[dict] = [
         derived={
             "PER_MILLION": ("TXNS", "PANEL_TXNS", 1e6),
             "PER_MILLION_TR7D": ("TXNS_TR7D", "PANEL_TXNS_TR7D", 1e6),
-            "SHOPIFY_SHARE_TR7D": ("SHOPIFY_TXNS_TR7D", "TXNS_TR7D", 1.0),
         },
         methodology=dict(
             source="Same card & bank set as Muse web: Yodlee feeds 3, 4 and 6. Feed 4 bank has had no agentic "
@@ -560,15 +605,12 @@ SECTIONS: list[dict] = [
                  "From 09-23/24 Stripe shortened the descriptor to 'LINK* <merchant>'. Bare LINK* also matches "
                  "Cash App and other unrelated billers, so it must carry Stripe's URL or city. LINK.COM* is the "
                  "ordinary Link wallet and is excluded by the 'space after *' rule."),
-                ("Shopify flag: 'LINK* SP <store>' or a Shopify / Shop Pay marker",
-                 "SP is Shopify's store prefix, so these are agent purchases at Shopify merchants."),
             ],
             dedupe="Distinct (source, transaction id).",
             measure="TXNS = agentic transactions that day. PER_MILLION = TXNS per million panel transactions "
                     "(same feeds, same day). Panel coverage still fills in for ~10 days, so the rate is the "
                     "comparable series and raw counts in the latest days run low. PER_MILLION_TR7D is the ratio "
-                    "of 7-day sums, not a mean of daily ratios. SHOPIFY_SHARE_TR7D = Shopify-store share of "
-                    "7-day agentic volume. The count is a floor: at merchants that take Stripe directly, an agent "
+                    "of 7-day sums, not a mean of daily ratios. The count is a floor: at merchants that take Stripe directly, an agent "
                     "purchase carries the merchant's own descriptor and is invisible here; at the top agentic "
                     "merchants Link-agent rows are under 0.01% of panel transactions (0.5% at Porkbun) since "
                     "launch (investigations/stripe_vs_link_share.ipynb).",
@@ -577,17 +619,35 @@ SECTIONS: list[dict] = [
     ),
     dict(
         key="agentic_merchants",
-        title="Top agentic-checkout merchants (trailing 28 days)",
+        title="Top agentic-checkout merchants (since launch and trailing 28 days)",
         keys=None, measures=[], fill_zero=False,
         sql="""
-            SELECT merchant AS MERCHANT,
-                   COUNT(DISTINCT source || '|' || txn_id) AS TXNS,
-                   COUNT(DISTINCT source || '|' || member) AS CARDHOLDERS,
-                   ROUND(MEDIAN(amount), 2) AS MEDIAN_AMOUNT
-            FROM srs_slice.meta.card_txns
-            WHERE signal = 'agentic' AND merchant IS NOT NULL
-              AND day BETWEEN '{merch_start}' AND '{card_through}'
-            GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT 25
+            WITH w AS (
+                SELECT 'Since launch' AS window_name, CAST('""" + LAUNCH + """' AS DATE) AS start_day
+                UNION ALL SELECT 'Last 28 days', CAST('{merch_start}' AS DATE)
+            ), t AS (
+                SELECT DISTINCT w.window_name, c.source, c.txn_id, c.member, c.amount, c.merchant
+                FROM srs_slice.meta.muse_card_txns c
+                JOIN w ON c.day BETWEEN w.start_day AND '{card_through}'
+                WHERE c.signal = 'agentic'
+            ), tot AS (
+                -- denominator: every agentic transaction in the window, including unlabelled ones
+                SELECT window_name, SUM(amount) AS spend FROM t GROUP BY 1
+            ), m AS (
+                SELECT t.window_name, t.merchant,
+                       COUNT(DISTINCT t.source || '|' || t.txn_id) AS txns,
+                       COUNT(DISTINCT t.source || '|' || t.member) AS cardholders,
+                       ROUND(MEDIAN(t.amount), 2) AS median_amount,
+                       ROUND(1.0 * SUM(t.amount) / MAX(tot.spend), 4) AS spend_share
+                FROM t JOIN tot ON tot.window_name = t.window_name
+                WHERE t.merchant IS NOT NULL
+                GROUP BY 1, 2
+            )
+            SELECT window_name AS PERIOD, merchant AS MERCHANT, txns AS TXNS, cardholders AS CARDHOLDERS,
+                   median_amount AS MEDIAN_AMOUNT, spend_share AS SPEND_SHARE
+            FROM (SELECT m.*, ROW_NUMBER() OVER (PARTITION BY window_name ORDER BY txns DESC, merchant) AS rn FROM m) r
+            WHERE rn <= 25
+            ORDER BY 1 DESC, rn
         """,
         methodology=dict(
             source="The agentic transactions above.",
@@ -595,10 +655,14 @@ SECTIONS: list[dict] = [
                       "QDI* processor prefix)",
                       "Descriptors truncate merchant names, so this is a label for reading, not an entity match.")],
             dedupe="As above.",
-            measure="A breakdown table rather than a daily series: transactions, unique cardholders and median "
-                    "amount per merchant over the 28 days ending at the card complete-through date. CARDHOLDERS "
+            measure="A breakdown table rather than a daily series: the top 25 merchants by transactions, with "
+                    "unique cardholders and median amount, for two windows ending at the card complete-through "
+                    f"date: PERIOD = 'Since launch' (from {LAUNCH}, growing each day) or 'Last 28 days'. CARDHOLDERS "
                     "= distinct panel members (per source); TXNS well above CARDHOLDERS means repeat agent "
-                    "purchases by the same people.",
+                    "purchases by the same people. SPEND_SHARE = the merchant's agentic $ over all agentic $ "
+                    "observed in the same window (every Link-agent transaction, including the few with no "
+                    "readable merchant label), so it is a share of observed agentic spend, not of the "
+                    "merchant's total sales.",
             lag=f"Complete through run date minus {CARD_LAG_DAYS} days.",
         ),
     ),
@@ -608,10 +672,10 @@ SECTIONS: list[dict] = [
         keys=None, measures=[], fill_zero=False,
         sql="""
             WITH a AS (
-                SELECT day, source, amount, merchant, is_shopify,
+                SELECT day, source, amount, merchant,
                        REGEXP_REPLACE(description, 'XXXX+[0-9]+', 'XXXX') AS description,
                        CASE WHEN description ILIKE '%linkagnt*%' THEN 'LINKAGNT*' ELSE 'LINK*' END AS form
-                FROM srs_slice.meta.card_txns
+                FROM srs_slice.meta.muse_card_txns
                 WHERE signal = 'agentic' AND merchant IS NOT NULL AND day <= '{card_through}'
             ), r AS (
                 -- Card panels first: they carry the plain Stripe descriptor, where bank rows wrap it in
@@ -623,7 +687,7 @@ SECTIONS: list[dict] = [
                 WHERE (form = 'LINKAGNT*' AND day < '2026-09-23') OR (form = 'LINK*' AND day >= '2026-09-23')
             )
             SELECT CAST(day AS VARCHAR) AS DATE, form AS FORM, description AS DESCRIPTION,
-                   amount AS AMOUNT, merchant AS MERCHANT, is_shopify AS IS_SHOPIFY
+                   amount AS AMOUNT, merchant AS MERCHANT
             FROM r WHERE rn = 1 ORDER BY 1
         """,
         methodology=dict(
@@ -632,8 +696,7 @@ SECTIONS: list[dict] = [
                       "One example of each descriptor form, to show what the matching rules see.")],
             dedupe="One row per form, from a card panel where one exists; no member or transaction ids are "
                    "published, and masked card-number tails are blanked.",
-            measure="DESCRIPTION is the raw card descriptor, MERCHANT the label extracted from it, IS_SHOPIFY "
-                    "the Shopify flag.",
+            measure="DESCRIPTION is the raw card descriptor, MERCHANT the label extracted from it.",
             lag=f"Complete through run date minus {CARD_LAG_DAYS} days.",
         ),
     ),
@@ -645,7 +708,7 @@ SECTIONS: list[dict] = [
         sql="""
             SELECT CAST(date AS VARCHAR) AS DATE, app AS APP, country AS COUNTRY,
                    downloads AS DOWNLOADS, dau AS DAU
-            FROM srs_slice.meta.app_usage
+            FROM srs_slice.meta.muse_app_usage
             WHERE date >= '{app_start}'
             ORDER BY 2, 3, 1
         """,
@@ -684,7 +747,7 @@ SECTIONS: list[dict] = [
         sql="""
             SELECT CAST(date AS VARCHAR) AS DATE, country AS COUNTRY, publisher AS PUBLISHER,
                    ROUND(SUM(spend), 0) AS SPEND
-            FROM srs_slice.meta.ad_spend
+            FROM srs_slice.meta.muse_ad_spend
             WHERE date >= '{card_start}'
             GROUP BY 1, 2, 3 ORDER BY 1, 2, 3
         """,
@@ -711,14 +774,13 @@ SECTIONS: list[dict] = [
         start="card_start", through=None,
         sql="""
             SELECT CAST(date AS VARCHAR) AS DATE, country AS COUNTRY, ROUND(SUM(visits), 0) AS VISITS
-            FROM srs_slice.meta.web_traffic
+            FROM srs_slice.meta.muse_web_traffic
             WHERE date >= '{card_start}'
             GROUP BY 1, 2 ORDER BY 1, 2
         """,
         methodology=dict(
             source="SimilarWeb daily visits, SIMILARWEB.SNOWFLAKE_INTEGRATION.DOWNSTREAM_DAILY (metric "
-                   "ALL_TRAFFIC_VISITS). Until the pipeline loads muse.ai, the build uses a SimilarWeb API "
-                   "snapshot with the same definition; the freshness line names the source used.",
+                   "ALL_TRAFFIC_VISITS).",
             filters=[
                 ("Domain muse.ai, desktop plus mobile web, subdomains included", "Muse's web app."),
                 ("Country US and WW", "WW is SimilarWeb's worldwide total, not a sum of countries."),
@@ -732,20 +794,23 @@ SECTIONS: list[dict] = [
     ),
     dict(
         key="launch_benchmark",
-        title="Launch benchmark: US downloads by day since launch (SensorTower)",
+        title="Launch benchmark: US downloads and DAU by day since launch (SensorTower)",
         keys=None, measures=[], fill_zero=False,
         sql="""
             SELECT APP, DATE, DAY_N, DOWNLOADS, CUM_DOWNLOADS,
-                   CASE WHEN N7 = 7 THEN ROUND(SUM7 / 7, 0) END AS DOWNLOADS_TR7D
+                   CASE WHEN N7 = 7 THEN ROUND(SUM7 / 7, 0) END AS DOWNLOADS_TR7D,
+                   DAU,
+                   ROUND(1.0 * DAU / NULLIF(CUM_DOWNLOADS, 0), 4) AS RETENTION
             FROM (
                 SELECT app AS APP, CAST(date AS VARCHAR) AS DATE,
                        DATEDIFF('day', MIN(date) OVER (PARTITION BY app), date) AS DAY_N,
-                       downloads AS DOWNLOADS,
+                       downloads AS DOWNLOADS, dau AS DAU,
                        SUM(downloads) OVER (PARTITION BY app ORDER BY date
                                             ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS CUM_DOWNLOADS,
                        SUM(downloads) OVER (PARTITION BY app ORDER BY date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS SUM7,
                        COUNT(*) OVER (PARTITION BY app ORDER BY date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS N7
-                FROM srs_slice.meta.benchmark
+                FROM srs_slice.meta.muse_benchmark
+                WHERE NOT (app = 'Muse' AND date < '""" + LAUNCH + """')   -- Muse day 0 = public launch
             ) t
             ORDER BY APP, DAY_N
         """,
@@ -761,17 +826,30 @@ SECTIONS: list[dict] = [
                 (f"Clubhouse day 0 = {BENCHMARK_DAY0['Clubhouse']}",
                  "Its viral breakout, the first day of the sustained jump in US downloads, rather than its "
                  "invite-only iOS release in spring 2020."),
+                (f"Muse day 0 = {LAUNCH} (public launch)",
+                 "SensorTower's first Muse day, 2026-09-07, is a partial pre-launch day (about 8k US downloads "
+                 "against about 115k on launch day), so day 0 is the first full day. Those ~8k downloads "
+                 "are left out of Muse's cumulative total, which understates it by under 1% after the first "
+                 "week."),
+                ("Retention proxy: Clubhouse not shown",
+                 "Its day 0 is a breakout, not a release, so its cumulative downloads miss the installed base "
+                 "from before day 0 and DAU / cumulative downloads exceeds 100%."),
             ],
             dedupe="Summed per app and day.",
             measure="DOWNLOADS = estimated first-time US downloads; CUM_DOWNLOADS = running total from day 0; "
-                    "DOWNLOADS_TR7D = mean of the last 7 days. Muse has fewer days than the others.",
-            lag="Downloads run to about T-2.",
+                    "DOWNLOADS_TR7D = mean of the last 7 days. DAU = estimated US daily active users that day. "
+                    "RETENTION = DAU / CUM_DOWNLOADS on the same day: a proxy for the share of everyone who has "
+                    "downloaded the app who is still using it daily. It is not cohort retention (re-installs and "
+                    "multi-device users blur it) and is best compared across apps at the same day since launch. "
+                    "Muse has fewer days than the others.",
+            lag="Downloads run to about T-2 and DAU to about T-3; the latest DAU day arrives as 0 and is treated "
+                "as missing.",
         ),
     ),
 ]
 
 # Methodology order follows the page.
-_PAGE_ORDER = ["app_usage_daily", "ad_spend_daily", "launch_benchmark", "web_traffic_daily", "muse_web_daily",
+_PAGE_ORDER = ["launch_benchmark", "app_usage_daily", "ad_spend_daily", "web_traffic_daily", "muse_web_daily",
                "muse_inapp_daily", "inapp_flows_daily", "web_flows_daily", "agentic_daily", "agentic_merchants",
                "agentic_samples"]
 SECTIONS.sort(key=lambda s: _PAGE_ORDER.index(s["key"]))

@@ -150,44 +150,34 @@ def load_single(name: str, sql: str, run_date: date, offline: bool) -> pd.DataFr
     return cached(path, sql, fresh=False, offline=offline)
 
 
-def load_member_tenure(card_rows: pd.DataFrame, run_date: date, offline: bool) -> pd.DataFrame:
-    """First / last panel transaction per web Muse payer, one pruned range query per source, cached per run date
-    and payer set (a new payer re-pulls)."""
-    members = sorted(card_rows.loc[card_rows.signal == "muse_web", "member"].dropna().astype(str).unique())
-    key = hashlib.md5("|".join(members).encode()).hexdigest()[:10]
-    path = CACHE / "member_tenure" / f"{run_date.isoformat()}_{key}.parquet"
+def load_member_panel(card_rows: pd.DataFrame, run_date: date, offline: bool) -> pd.DataFrame:
+    """Days each web Muse payer transacted (any merchant), one pruned range query per source on
+    that source's own payers, cached per run date and payer set (a new payer re-pulls)."""
+    web = card_rows.loc[card_rows.signal == "muse_web", ["source", "member"]].dropna().astype(str).drop_duplicates()
+    by_src = {s: sorted(g.member) for s, g in web.groupby("source")}
+    key = hashlib.md5(repr(sorted(by_src.items())).encode()).hexdigest()[:10]
+    path = CACHE / "member_days" / f"{run_date.isoformat()}_{key}.parquet"
     if path.exists():
-        log("member_tenure: cache")
+        log("member_panel: cache")
         return pd.read_parquet(path)
     if offline:
-        latest = sorted((CACHE / "member_tenure").glob("*.parquet"))
+        latest = sorted((CACHE / "member_days").glob("*.parquet"))
         if not latest:
-            raise FileNotFoundError("--offline and no cache for member_tenure")
-        log(f"member_tenure: --offline, using {latest[-1].name}")
+            raise FileNotFoundError("--offline and no cache for member_panel")
+        log(f"member_panel: --offline, using {latest[-1].name}")
         return pd.read_parquet(latest[-1])
-    if not members:
-        return pd.DataFrame(columns=["source", "member", "first_seen", "last_seen"])
-    log(f"member_tenure: query for {len(members)} members x {len(S.CARD_SOURCES)} sources")
+    srcs = [s for s in S.CARD_SOURCES if s["name"] in by_src]
+    if not srcs:
+        return pd.DataFrame(columns=["source", "member", "day", "txns"])
+    log(f"member_panel: query for {len(web)} payers x {len(srcs)} sources")
     t0 = time.time()
     with ThreadPoolExecutor(WORKERS) as pool:
-        df = pd.concat(pool.map(lambda s: q(S.member_tenure_sql(s, members, run_date.isoformat())), S.CARD_SOURCES),
+        df = pd.concat(pool.map(lambda s: q(S.member_panel_sql(s, by_src[s["name"]], run_date.isoformat())), srcs),
                        ignore_index=True)
-    log(f"member_tenure: {len(df)} rows in {time.time() - t0:.0f}s")
+    log(f"member_panel: {len(df)} rows in {time.time() - t0:.0f}s")
     path.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(path, index=False)
     return df
-
-
-def load_web_traffic(run_date: date, offline: bool) -> tuple[pd.DataFrame, str]:
-    """SimilarWeb from Snowflake once the pipeline carries the domains; until then the MCP snapshot."""
-    df = load_single("web_traffic", S.WEB_TRAFFIC_SQL, run_date, offline)
-    if len(df):
-        return df, "SimilarWeb (Snowflake)"
-    snap = HERE / S.WEB_TRAFFIC_SNAPSHOT
-    df = pd.read_csv(snap)
-    log(f"web_traffic: no Snowflake rows, using {snap.name} ({len(df)} rows)")
-    as_of = datetime.fromtimestamp(snap.stat().st_mtime).date().isoformat()
-    return df, f"SimilarWeb (API snapshot {as_of})"
 
 
 def load_clubhouse() -> pd.DataFrame | None:
@@ -233,7 +223,8 @@ def to_duckdb(tables: dict[str, tuple[pd.DataFrame, list[str]]]) -> duckdb.DuckD
     con.execute("CREATE SCHEMA srs_slice.meta")
     for name, (df, date_cols) in tables.items():
         con.register("_df", df)
-        casts = ", ".join(f"CAST({c} AS DATE) AS {c}" for c in date_cols)
+        # file_date is absent from card days cached before it was added
+        casts = ", ".join(f"CAST({c} AS DATE) AS {c}" for c in date_cols if c in df.columns)
         con.execute(f"CREATE TABLE srs_slice.meta.{name} AS SELECT * REPLACE ({casts}) FROM _df")
         con.unregister("_df")
     return con
@@ -368,24 +359,25 @@ def main() -> None:
     t0 = time.time()
 
     card_rows, panel_totals = load_cards(run_date, args.offline or args.cache_cards)
-    tenure = load_member_tenure(card_rows, run_date, args.offline)
+    member_panel = load_member_panel(card_rows, run_date, args.offline)
     niq = load_single("niq_receipts", S.NIQ_SQL, run_date, args.offline)
     app = load_single("app_usage", S.APP_USAGE_SQL, run_date, args.offline)
     ad_spend = load_single("ad_spend", S.AD_SPEND_SQL, run_date, args.offline)
-    web_traffic, web_source = load_web_traffic(run_date, args.offline)
+    web_traffic = load_single("web_traffic", S.WEB_TRAFFIC_SQL, run_date, args.offline)
+    web_source = "SimilarWeb"
     benchmark, has_clubhouse = load_benchmark(run_date, args.offline)
     if _conn is not None:
         _conn.close()  # explicit close; leaving it to interpreter exit re-triggered the OAuth browser prompt
 
     con = to_duckdb({
-        "card_txns": (card_rows, ["day"]),
-        "panel_totals": (panel_totals, ["day"]),
-        "member_tenure": (tenure, ["first_seen", "last_seen"]),
-        "niq_receipts": (niq, ["order_date"]),
-        "app_usage": (app, ["date"]),
-        "ad_spend": (ad_spend, ["date"]),
-        "web_traffic": (web_traffic, ["date"]),
-        "benchmark": (benchmark, ["date"]),
+        "muse_card_txns": (card_rows, ["day", "file_date"]),
+        "muse_panel_totals": (panel_totals, ["day"]),
+        "muse_member_panel": (member_panel, ["day"]),
+        "muse_niq_receipts": (niq, ["order_date"]),
+        "muse_app_usage": (app, ["date"]),
+        "muse_ad_spend": (ad_spend, ["date"]),
+        "muse_web_traffic": (web_traffic, ["date"]),
+        "muse_benchmark": (benchmark, ["date"]),
     })
     params = dict(
         card_start=S.CARD_START,

@@ -7,6 +7,8 @@
 *.pkl
 **/datapull/raw/
 **/datapull/output/
+**/.cache/
+meta/app/meta_muse.json
 
 # Python / environments
 .venv/

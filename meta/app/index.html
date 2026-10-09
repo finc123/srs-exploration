@@ -47,6 +47,8 @@
   .chart { position: relative; height: 280px; }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   .grid2 > div { min-width: 0; }
+  .stack { display: grid; grid-template-columns: 1fr; gap: 16px; }
+  .stack > div { min-width: 0; }
   .chead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px;
            min-height: 26px; margin-bottom: 4px; color: var(--muted); font-size: 12px; font-weight: 600; }
   h3 { font-size: 15px; margin: 16px 0 6px; }
@@ -118,13 +120,14 @@ function draw(id, labels, datasets, opts = {}) {
     options: {
       maintainAspectRatio: false, animation: false, interaction: { mode: "index", intersect: false },
       plugins: { legend: { labels: { color: ink, boxWidth: 12 } },
-                 tooltip: { callbacks: { label: opts.label || (c => `${c.dataset.label}: ${opts.pct ? pct(c.parsed.y) : fmtBig(c.parsed.y)}`),
+                 tooltip: { callbacks: { label: opts.label || (c => `${c.dataset.label}: ${opts.ratio ? fmt(c.parsed.y * 100, 1) + "%" : opts.pct ? pct(c.parsed.y) : fmtBig(c.parsed.y)}`),
                                          footer: opts.footer } } },
       scales: {
         x: { ticks: { color: ink, maxTicksLimit: 10, maxRotation: 0 }, grid: { display: false }, stacked: !!opts.stacked,
              title: { display: !!opts.xTitle, text: opts.xTitle, color: ink } },
-        y: { type: opts.log ? "logarithmic" : "linear",
-             ticks: { color: ink, callback: v => opts.share ? fmt(v * 100, 0) + "%" : opts.pct ? pct(v) : fmtBig(v) },
+        // Fixed y-axis width, so full-width charts stacked on the page put each date at the same x.
+        y: { type: opts.log ? "logarithmic" : "linear", afterFit: s => { s.width = 64; },
+             ticks: { color: ink, callback: v => opts.share || opts.ratio ? fmt(v * 100, 0) + "%" : opts.pct ? pct(v) : fmtBig(v) },
              grid: { color: grid }, beginAtZero: !opts.log, stacked: !!opts.stacked, max: opts.share ? 1 : undefined },
       },
     },
@@ -176,16 +179,68 @@ function block(title, note) {
   return { el: s, ctls: s.querySelector(".ctls") };
 }
 
-// A chart column with its own small heading and pill row (for blocks with two charts side by side).
+// A chart with its own small heading and pill row (for blocks holding two charts).
 const col = (id, title) => `<div><div class="chead"><span>${esc(title)}</span><div class="ctl-host" id="${id}_ctl"></div></div><div class="chart"><canvas id="${id}"></canvas></div></div>`;
 const ctlHost = id => document.getElementById(id + "_ctl");
 
 const BLOCKS = [
+  { key: "launch_benchmark", render(rows, sections, p) {
+      const day0 = p.benchmark_day0 || {};
+      const b = block("Launch benchmark: US downloads and DAU by day since launch",
+        "SensorTower US downloads and DAU (iPhone + Android) from each app's day 0, the first day with downloads; for Muse, its public launch on 2026-09-08 (09-07 was a partial pre-launch day). " +
+        (day0.Clubhouse ? `Clubhouse comes from a SensorTower export; its day 0 is its viral breakout (${esc(day0.Clubhouse)}), not its spring-2020 invite-only release. `
+                        : "Clubhouse is unavailable in this build (no export found). ") +
+        "Retention proxy = that day's DAU / cumulative downloads to date: the share of everyone who has downloaded the app who used it that day. It is not cohort retention. " +
+        "Clubhouse is left out of the retention proxy, since its downloads before day 0 are missing from the denominator. " +
+        "Use Log scale to compare Muse with the much larger ChatGPT and Threads launches.");
+      b.el.insertAdjacentHTML("beforeend", `<div class="chart" style="height:340px"><canvas id="c_bench"></canvas></div>`);
+      const st = { Metric: "Cumulative downloads", Scale: "Linear" }, C = COLORS();
+      const METRICS = { "Cumulative downloads": "CUM_DOWNLOADS", "Downloads TR7D": "DOWNLOADS_TR7D", "DAU": "DAU", "Retention proxy": "RETENTION" };
+      const apps = ["Muse", "ChatGPT", "Threads", "Sora", "Claude", "Clubhouse"].filter(a => rows.some(r => r.APP === a));
+      const maxN = Math.max(0, ...rows.map(r => r.DAY_N)), labels = Array.from({ length: maxN + 1 }, (_, i) => i);
+      const go = () => {
+        const log = st.Scale === "Log", colName = METRICS[st.Metric], ratio = colName === "RETENTION";
+        // Colour stays tied to the app's position in `apps`, so Clubhouse dropping out does not recolour the rest.
+        draw("c_bench", labels, apps.map((a, i) => {
+          const data = labels.map(() => null);
+          for (const r of rows) if (r.APP === a && r[colName] != null && (!log || r[colName] > 0)) data[r.DAY_N] = r[colName];
+          const name = a === "Clubhouse" && day0.Clubhouse ? `Clubhouse (day 0 = ${day0.Clubhouse})` : a;
+          return { type: "line", label: name, data, borderColor: C[i], backgroundColor: C[i], pointRadius: 0,
+                   borderWidth: a === "Muse" ? 3.5 : 1.5, spanGaps: true, order: a === "Muse" ? 0 : 1 };
+        }).filter((_, i) => !(ratio && apps[i] === "Clubhouse")), { log, ratio, xTitle: "Days since launch" });
+      };
+      buttons(b.ctls, "Metric", Object.keys(METRICS), st, go);
+      buttons(b.ctls, "Scale", ["Linear", "Log"], st, go); go();
+  } },
+  { key: "app_usage_daily", render(rows) {
+      const b = block("AI assistant share (SensorTower, daily)",
+        "Stacked daily values across Muse, ChatGPT, Gemini, Claude and Grok: bar height is the five-app total, segments are each app. A day is shown only when every app has a value (DAU arrives a day later than downloads). Switch View to Share for the 100% split. Apps are matched by SensorTower product key, not name. August is the pre-launch baseline.");
+      b.el.insertAdjacentHTML("beforeend", `<div class="chart" style="height:320px"><canvas id="c_share"></canvas></div>`);
+      const st = { Metric: "DAU", Country: "US", View: "Level" }, C = COLORS(), apps = SHARE_APPS, dates = CAL;
+      const go = () => {
+        const colName = st.Metric === "DAU" ? "DAU" : "DOWNLOADS";  // daily values, not TR7D
+        const raw = apps.map(a => series(rows, colName, { APP: a, COUNTRY: st.Country }, dates));
+        // A day counts only when every comparison app has a value; Muse before launch is a true zero.
+        const keep = dates.map((_, j) => apps.every((a, i) => a === "Muse" || raw[i][j] != null));
+        const lvl = raw.map(s => s.map((v, j) => keep[j] ? v ?? 0 : null));
+        const tot = dates.map((_, j) => keep[j] ? sum(lvl.map(s => s[j])) : null);
+        const shr = lvl.map(s => s.map((v, j) => tot[j] ? v / tot[j] : null));
+        const view = st.View === "Share" ? shr : lvl;
+        draw("c_share", dates, apps.map((a, i) => ({ type: "bar", label: a, data: view[i], stack: "s", borderWidth: 0,
+                                                     backgroundColor: alpha(C[i], i === 0 ? 0.95 : 0.6) })), {
+          stacked: true, share: st.View === "Share",
+          label: c => `${c.dataset.label}: ${fmtBig(lvl[c.datasetIndex][c.dataIndex])} (${fmt(100 * shr[c.datasetIndex][c.dataIndex], 1)}%)`,
+          footer: items => items.length ? `Total: ${fmtBig(tot[items[0].dataIndex])}` : "",
+        });
+      };
+      buttons(b.ctls, "Metric", ["DAU", "Downloads"], st, go); buttons(b.ctls, "Country", ["US", "WW"], st, go);
+      buttons(b.ctls, "View", ["Level", "Share"], st, go); go();
+  } },
   { key: "app_usage_daily", render(rows, sections) {
       const b = block("App downloads, DAU and ad spend",
-        "Left: Muse from Meta vs the Meta AI app it sits beside (SensorTower). Muse is live in the US and Canada only, so WW ≈ US + CA. " +
-        "Right: Muse digital ad spend by publisher (Pathmatics). Pathmatics covers digital channels only, not TV.");
-      b.el.insertAdjacentHTML("beforeend", `<div class="grid2">${col("c_app", "Muse vs Meta AI")}${col("c_ad", "Digital ad spend, US$")}</div>`);
+        "Top: Muse from Meta vs the Meta AI app it sits beside (SensorTower). Muse is live in the US and Canada only, so WW ≈ US + CA. " +
+        "Bottom: Muse digital ad spend by publisher (Pathmatics). Pathmatics covers digital channels only, not TV.");
+      b.el.insertAdjacentHTML("beforeend", `<div class="stack">${col("c_app", "Muse vs Meta AI")}${col("c_ad", "Digital ad spend, US$")}</div>`);
       const st = { Metric: "DAU", Country: "US" }, dates = CAL, C = COLORS();
       const go = () => {
         const w = a => ({ APP: a, COUNTRY: st.Country }), m = st.Metric === "DAU" ? "DAU" : "DOWNLOADS";
@@ -212,53 +267,6 @@ const BLOCKS = [
       };
       if (ad.length) { buttons(ctlHost("c_ad"), "Ad market", ["US", "CA", "All"], sa, goAd); goAd(); }
   } },
-  { key: "launch_benchmark", render(rows, sections, p) {
-      const day0 = p.benchmark_day0 || {};
-      const b = block("Launch benchmark: US downloads by day since launch",
-        "SensorTower US downloads (iPhone + Android) from each app's day 0, the first day with downloads. " +
-        (day0.Clubhouse ? `Clubhouse comes from a SensorTower export; its day 0 is its viral breakout (${esc(day0.Clubhouse)}), not its spring-2020 invite-only release. `
-                        : "Clubhouse is unavailable in this build (no export found). ") +
-        "Use Log scale to compare Muse with the much larger ChatGPT and Threads launches.");
-      b.el.insertAdjacentHTML("beforeend", `<div class="chart" style="height:340px"><canvas id="c_bench"></canvas></div>`);
-      const st = { View: "Cumulative", Scale: "Linear" }, C = COLORS();
-      const apps = ["Muse", "ChatGPT", "Threads", "Sora", "Claude", "Clubhouse"].filter(a => rows.some(r => r.APP === a));
-      const maxN = Math.max(0, ...rows.map(r => r.DAY_N)), labels = Array.from({ length: maxN + 1 }, (_, i) => i);
-      const go = () => {
-        const colName = st.View === "Cumulative" ? "CUM_DOWNLOADS" : "DOWNLOADS_TR7D", log = st.Scale === "Log";
-        draw("c_bench", labels, apps.map((a, i) => {
-          const data = labels.map(() => null);
-          for (const r of rows) if (r.APP === a && r[colName] != null && (!log || r[colName] > 0)) data[r.DAY_N] = r[colName];
-          const name = a === "Clubhouse" && day0.Clubhouse ? `Clubhouse (day 0 = ${day0.Clubhouse})` : a;
-          return { type: "line", label: name, data, borderColor: C[i], backgroundColor: C[i], pointRadius: 0,
-                   borderWidth: a === "Muse" ? 3.5 : 1.5, spanGaps: true, order: a === "Muse" ? 0 : 1 };
-        }), { log, xTitle: "Days since launch" });
-      };
-      buttons(b.ctls, "View", ["Cumulative", "Daily TR7D"], st, go); buttons(b.ctls, "Scale", ["Linear", "Log"], st, go); go();
-  } },
-  { key: "app_usage_daily", render(rows) {
-      const b = block("AI assistant share (SensorTower, daily)",
-        "Stacked daily values across Muse, ChatGPT, Gemini, Claude and Grok: bar height is the five-app total, segments are each app. A day is shown only when every app has a value (DAU arrives a day later than downloads). Switch View to Share for the 100% split. Apps are matched by SensorTower product key, not name. August is the pre-launch baseline.");
-      b.el.insertAdjacentHTML("beforeend", `<div class="chart" style="height:320px"><canvas id="c_share"></canvas></div>`);
-      const st = { Metric: "DAU", Country: "US", View: "Level" }, C = COLORS(), apps = SHARE_APPS, dates = CAL;
-      const go = () => {
-        const colName = st.Metric === "DAU" ? "DAU" : "DOWNLOADS";  // daily values, not TR7D
-        const raw = apps.map(a => series(rows, colName, { APP: a, COUNTRY: st.Country }, dates));
-        // A day counts only when every comparison app has a value; Muse before launch is a true zero.
-        const keep = dates.map((_, j) => apps.every((a, i) => a === "Muse" || raw[i][j] != null));
-        const lvl = raw.map(s => s.map((v, j) => keep[j] ? v ?? 0 : null));
-        const tot = dates.map((_, j) => keep[j] ? sum(lvl.map(s => s[j])) : null);
-        const shr = lvl.map(s => s.map((v, j) => tot[j] ? v / tot[j] : null));
-        const view = st.View === "Share" ? shr : lvl;
-        draw("c_share", dates, apps.map((a, i) => ({ type: "bar", label: a, data: view[i], stack: "s", borderWidth: 0,
-                                                     backgroundColor: alpha(C[i], i === 0 ? 0.95 : 0.6) })), {
-          stacked: true, share: st.View === "Share",
-          label: c => `${c.dataset.label}: ${fmtBig(lvl[c.datasetIndex][c.dataIndex])} (${fmt(100 * shr[c.datasetIndex][c.dataIndex], 1)}%)`,
-          footer: items => items.length ? `Total: ${fmtBig(tot[items[0].dataIndex])}` : "",
-        });
-      };
-      buttons(b.ctls, "Metric", ["DAU", "Downloads"], st, go); buttons(b.ctls, "Country", ["US", "WW"], st, go);
-      buttons(b.ctls, "View", ["Level", "Share"], st, go); go();
-  } },
   { key: "web_traffic_daily", render(rows, sections, p) {
       const b = block("muse.ai web traffic (SimilarWeb)",
         `Daily visits to muse.ai, desktop and mobile web. Source: ${esc(p.web_traffic_source || "SimilarWeb")}. ` +
@@ -273,10 +281,10 @@ const BLOCKS = [
   { key: "inapp_flows_daily", render(rows, sections) {
       const b = block("Subscriber flows: gross adds and churn",
         "Gross adds above zero, cancellations below, and the net-adds TR7D line. " +
-        "Left, e-receipts: a gross add is a mailbox's first sign-up receipt (Apple's subscription confirmation, Google Play's first payment); cancellations are the stores' cancellation emails. " +
-        "Right, cards: a gross add is a payment with none in the previous 35 days, by a member in the panel for over 35 days; a cancellation is no payment within 35 days of the last one, dated at day 35, by a member still active in the panel (lapses by members who left the panel are excluded). " +
+        "Top, e-receipts: a gross add is a mailbox's first sign-up receipt (Apple's subscription confirmation, Google Play's first payment); cancellations are the stores' cancellation emails. " +
+        "Bottom, cards: a gross add is a payment with none in the previous 35 days, by a member transacting in the panel for over 35 days; a cancellation is no payment within 35 days of the last one, dated at day 35, by a member active in the panel (at least one transaction with any merchant in the 30 days to that date). A member with no transactions in that window has left the panel: neither the lapse nor their original gross add is counted. Subscriptions that began before the member joined the panel are excluded at both ends. " +
         "The first web payment was 2026-09-17, so card cancellations can start from 2026-10-22. Store applies to the e-receipt chart only.");
-      b.el.insertAdjacentHTML("beforeend", `<div class="grid2">${col("c_flow_ia", "In-app (e-receipts)")}${col("c_flow_web", "Web (cards)")}</div>`);
+      b.el.insertAdjacentHTML("beforeend", `<div class="stack">${col("c_flow_ia", "In-app (e-receipts)")}${col("c_flow_web", "Web (cards)")}</div>`);
       const web = sections.web_flows_daily || [], st = { Store: "All", Plan: "All" }, dates = CAL, C = COLORS();
       const neg = a => a.map(v => v == null ? null : -v);
       const go = () => {
@@ -299,21 +307,26 @@ const BLOCKS = [
       const b = block("Agentic Checkout to Non-Stripe Merchants",
         "Muse, GrokBot and Instinct use Stripe Virtual Cards for merchants that do not accept Stripe as a payment processor. Cleveland Research noted that the majority of agentic spend from a card issuer was coming from Muse.");
       b.el.insertAdjacentHTML("beforeend", `<div class="grid2"><div class="chart"><canvas id="c_ag"></canvas></div><div class="chart"><canvas id="c_ag2"></canvas></div></div>
-        <h3>Top merchants, trailing 28 days</h3><div class="scroll"><table id="t_merch"></table></div>
-        <h3>Example records</h3><p class="note">The raw card descriptor and what the matching rules read from it: the form (<code>LINKAGNT*</code> until 2026-09-23, <code>LINK*</code> after), the merchant label after the prefix, and the Shopify flag (<code>SP</code> store prefix).</p>
+        <div class="head" style="margin-top:16px"><h3 style="margin:0">Top merchants</h3><div id="t_merch_ctl"></div></div>
+        <p class="note">Share of observed spend = the merchant's agentic $ over all agentic $ seen in the same period, so it is a share of observed agent spend, not of the merchant's sales.</p>
+        <div class="scroll"><table id="t_merch"></table></div>
+        <h3>Example records</h3><p class="note">The raw card descriptor and what the matching rules read from it: the form (<code>LINKAGNT*</code> until 2026-09-23, <code>LINK*</code> after) and the merchant label after the prefix.</p>
         <div class="scroll"><table id="t_samples"></table></div>`);
       const dates = CAL, C = COLORS();
       draw("c_ag", dates, [bar("Per million", series(rows, "PER_MILLION", {}, dates), C[0]),
                            line("Per million", series(rows, "PER_MILLION_TR7D", {}, dates), C[0])]);
       draw("c_ag2", dates, [bar("Agentic txns", series(rows, "TXNS", {}, dates), C[1]),
-                            line("Agentic txns", series(rows, "TXNS_TR7D", {}, dates), C[1]),
-                            line("Shopify-store txns", series(rows, "SHOPIFY_TXNS_TR7D", {}, dates), C[2])]);
-      const m = sections.agentic_merchants || [];
-      document.getElementById("t_merch").innerHTML = `<tr><th>Merchant (descriptor)</th><th class="n">Txns</th><th class="n">Cardholders</th><th class="n">Median $</th></tr>` +
-        m.map(r => `<tr><td>${esc(r.MERCHANT)}</td><td class="n">${fmt(r.TXNS)}</td><td class="n">${fmt(r.CARDHOLDERS)}</td><td class="n">${fmt(r.MEDIAN_AMOUNT, 2)}</td></tr>`).join("");
+                            line("Agentic txns", series(rows, "TXNS_TR7D", {}, dates), C[1])]);
+      const merch = sections.agentic_merchants || [], sm = { Period: "Since launch" };
+      const goMerch = () => {
+        const m = merch.filter(r => r.PERIOD === sm.Period);
+        document.getElementById("t_merch").innerHTML = `<tr><th>Merchant (descriptor)</th><th class="n">Txns</th><th class="n">Cardholders</th><th class="n">Median $</th><th class="n">Share of observed spend</th></tr>` +
+          m.map(r => `<tr><td>${esc(r.MERCHANT)}</td><td class="n">${fmt(r.TXNS)}</td><td class="n">${fmt(r.CARDHOLDERS)}</td><td class="n">${fmt(r.MEDIAN_AMOUNT, 2)}</td><td class="n">${r.SPEND_SHARE == null ? "–" : fmt(r.SPEND_SHARE * 100, 1, 1) + "%"}</td></tr>`).join("");
+      };
+      buttons(document.getElementById("t_merch_ctl"), "Period", ["Since launch", "Last 28 days"], sm, goMerch); goMerch();
       const ex = sections.agentic_samples || [];
-      document.getElementById("t_samples").innerHTML = `<tr><th>Date</th><th>Descriptor</th><th>Form</th><th>Merchant</th><th>Shopify</th><th class="n">$</th></tr>` +
-        ex.map(r => `<tr><td>${esc(r.DATE)}</td><td><code>${esc(r.DESCRIPTION)}</code></td><td>${esc(r.FORM)}</td><td>${esc(r.MERCHANT)}</td><td>${r.IS_SHOPIFY ? "Yes" : "No"}</td><td class="n">${fmt(r.AMOUNT, 2)}</td></tr>`).join("");
+      document.getElementById("t_samples").innerHTML = `<tr><th>Date</th><th>Descriptor</th><th>Form</th><th>Merchant</th><th class="n">$</th></tr>` +
+        ex.map(r => `<tr><td>${esc(r.DATE)}</td><td><code>${esc(r.DESCRIPTION)}</code></td><td>${esc(r.FORM)}</td><td>${esc(r.MERCHANT)}</td><td class="n">${fmt(r.AMOUNT, 2)}</td></tr>`).join("");
   } },
 ];
 
