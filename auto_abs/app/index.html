@@ -134,17 +134,19 @@ const calIdx = period => { const [y, m] = period.split('-').map(Number); return 
 const calLabel = v => `${MON[((v % 12) + 12) % 12]} ${String(Math.floor(v / 12)).slice(2)}`;
 const fmtM = v => '$' + (v / 1e6).toFixed(1) + 'm';
 
-// Trailing-window recoveries for one trust: one entry per month with a valid window.
+// Recoveries over the w months ending at month m (month 0 = closing, zero losses), or null if
+// either end is missing. `seasoned` is false for windows starting before MIN_SEASON.
+function windowAt(t, w, m) {
+  const byM = t._byM || (t._byM = new Map(t.points.map(p => [p[0], p])));
+  const p = byM.get(m), b = m - w === 0 ? [0, 0, 0, null, 0, 0] : byM.get(m - w);
+  if (!p || !b || m - w < 0) return null;
+  const dg = p[4] - b[4], drec = dg - (p[5] - b[5]);
+  return { m, period: p[3], dg, drec, rate: dg >= MIN_GROSS ? drec / dg * 100 : null, seasoned: m - w >= MIN_SEASON };
+}
+
+// Trailing-window recoveries for one trust: one entry per month with a seasoned window (chart).
 function recWindows(t, w) {
-  const byM = new Map(t.points.map(p => [p[0], p]));
-  const out = [];
-  t.points.forEach(p => {
-    const b = byM.get(p[0] - w);
-    if (p[0] - w < MIN_SEASON || !b) return;
-    const dg = p[4] - b[4], drec = dg - (p[5] - b[5]);
-    out.push({ m: p[0], period: p[3], dg, drec, rate: dg >= MIN_GROSS ? drec / dg * 100 : null });
-  });
-  return out;
+  return t.points.map(p => windowAt(t, w, p[0])).filter(r => r && r.seasoned);
 }
 const xOf = r => xmode === 'cal' ? calIdx(r.period) : r.m;
 
@@ -182,8 +184,8 @@ function buildCard(key) {
     <div class="legend"></div>
     <h3 class="tbl-title" data-show="loss">Cumulative loss at fixed ages</h3>
     <p class="meta" data-show="loss">Shading compares trusts of the same program at the same age (darker = higher loss). Blank = trust not yet that old. Hover a row to highlight its line.</p>
-    <h3 class="tbl-title" data-show="recovery">Implied recovery rate, latest</h3>
-    <p class="meta" data-show="recovery">Lifetime = cumulative recoveries ÷ cumulative gross charge-offs. TR3M / TR6M = window ending in the latest collection period; grey with a date = trust has paid off, showing its last window. Shading compares current values within a program (darker = higher recovery).</p>
+    <h3 class="tbl-title" data-show="recovery">Implied recovery rate by age</h3>
+    <p class="meta" data-show="recovery">Each column is the trailing window (TR3M or TR6M, per the toggle above) ending at that month since closing, so a row reads as the trust's recovery history. Grey first column = window starts before month 3, which reads low because recoveries lag charge-offs. · = under $0.5m of charge-offs. Lifetime = cumulative recoveries ÷ cumulative gross charge-offs. Shading compares trusts of the same program at the same age (darker = higher recovery); hover a cell for the $ amounts.</p>
     <div class="tbl-wrap"><table class="age"></table></div>`;
   document.getElementById('charts').appendChild(card);
 
@@ -314,51 +316,46 @@ function renderRecoveryTable(state) {
   const progs = [...new Set(state.issuer.trusts.map(t => t.program))];
   const ts = state.issuer.trusts.filter(t => inFilter(state, t) && state.visible.has(t.name))
     .sort((a, b) => progs.indexOf(a.program) - progs.indexOf(b.program));
-  const latest = (t, w) => recWindows(t, w).filter(r => r.rate != null).at(-1) || null;
-  const row = t => {
-    const last = t.points.at(-1), g = last[4], rec = g - last[5];
-    return { t, g, life: g >= MIN_GROSS ? rec / g * 100 : null, r3: latest(t, 3), r6: latest(t, 6), m: last[0] };
+  // Columns = non-overlapping windows by age: TR3M -> M3, M6, ..., M48; TR6M -> M6, M12, ..., M60.
+  const ages = Array.from({ length: win === 3 ? 16 : 10 }, (_, i) => (i + 1) * win);
+  const seasoned = m => m - win >= MIN_SEASON;
+  const life = ws => {
+    const g = ws.reduce((s, t) => s + t.points.at(-1)[4], 0), n = ws.reduce((s, t) => s + t.points.at(-1)[5], 0);
+    return { rate: g >= MIN_GROSS ? (g - n) / g * 100 : null, dg: g, drec: g - n };
   };
-  const rows = ts.map(row);
-  // Pooled row per program: lifetime from summed cumulative amounts; trailing windows pooled at the
-  // latest collection period, over the trusts with a valid window that month.
-  const pooledRow = pg => {
-    const rs = rows.filter(r => r.t.program === pg);
-    const g = rs.reduce((s, r) => s + r.g, 0), rec = rs.reduce((s, r) => s + (r.g - r.t.points.at(-1)[5]), 0);
-    const pool = w => {
-      const ws = rs.map(r => recWindows(r.t, w).at(-1)).filter(x => x && x.period === DATA.latestPeriod);
-      const dg = ws.reduce((s, x) => s + x.dg, 0), drec = ws.reduce((s, x) => s + x.drec, 0);
-      return dg >= MIN_GROSS ? { rate: drec / dg * 100, period: DATA.latestPeriod } : null;
-    };
-    return { pooled: pg, g, life: g >= MIN_GROSS ? rec / g * 100 : null, r3: pool(3), r6: pool(6) };
+  // Pooled = sum of recoveries / sum of charge-offs over the program's trusts that reached that age.
+  const pooled = (ws, m) => {
+    const xs = ws.map(t => windowAt(t, win, m)).filter(Boolean);
+    if (!xs.length) return null;
+    const dg = xs.reduce((s, x) => s + x.dg, 0), drec = xs.reduce((s, x) => s + x.drec, 0);
+    return { rate: dg >= MIN_GROSS ? drec / dg * 100 : null, dg, drec, n: xs.length };
   };
-  const cols = ['life', 'r6', 'r3'];
-  const val = (r, c) => c === 'life' ? r.life : (r[c] ? r[c].rate : null);
-  // A paid-off trust's last window is from an earlier period (and end-of-life reads high), so it
-  // is shown muted with its date and left out of the shading.
-  const stale = (r, c) => c !== 'life' && r[c] && r[c].period !== DATA.latestPeriod;
   const range = {};
-  progs.forEach(pg => range[pg] = cols.map(c => {
-    const v = rows.filter(r => r.t.program === pg && !stale(r, c)).map(r => val(r, c)).filter(v => v != null);
-    return [Math.min(...v), Math.max(...v)];
-  }));
-  const cell = (pg, r, c, i) => {
-    const v = val(r, c);
-    if (v == null) return '<td class="num"></td>';
-    if (stale(r, c)) return `<td class="num muted">${v.toFixed(1)}% (${r[c].period.slice(0, 7)})</td>`;
-    const [lo, hi] = range[pg][i], f = hi > lo ? Math.max(0, Math.min(1, (v - lo) / (hi - lo))) : 0;
-    return `<td class="num" style="background:color-mix(in srgb, var(--accent) ${Math.round(6 + f * 44)}%, transparent)">${v.toFixed(1)}%</td>`;
+  progs.forEach(pg => {
+    const ws = ts.filter(t => t.program === pg);
+    range[pg] = [...ages.map(m => ws.map(t => windowAt(t, win, m)?.rate)), ws.map(t => life([t]).rate)]
+      .map(v => { v = v.filter(x => x != null); return [Math.min(...v), Math.max(...v)]; });
+  });
+  const cell = (pg, x, i, muted) => {
+    if (!x || x.rate == null) return `<td class="num${x ? ' muted' : ''}"${x ? ` title="charge-offs ${fmtM(x.dg)} below $0.5m"` : ''}>${x ? '·' : ''}</td>`;
+    const tip = `title="recoveries ${fmtM(x.drec)} / charge-offs ${fmtM(x.dg)}${x.n ? ' · ' + x.n + ' trusts' : ''}"`;
+    if (muted) return `<td class="num muted" ${tip}>${x.rate.toFixed(1)}%</td>`;
+    const [lo, hi] = range[pg][i], f = hi > lo ? Math.max(0, Math.min(1, (x.rate - lo) / (hi - lo))) : 0;
+    return `<td class="num" ${tip} style="background:color-mix(in srgb, var(--accent) ${Math.round(6 + f * 44)}%, transparent)">${x.rate.toFixed(1)}%</td>`;
   };
-  const head = `<thead><tr><th>Trust</th><th>Program</th><th class="num">Cum. charge-offs $m</th><th class="num">Lifetime</th><th class="num">TR6M</th><th class="num">TR3M</th><th class="num">Age</th></tr></thead>`;
+  const head = `<thead><tr><th>Trust</th><th>Program</th>${ages.map(m => `<th class="num${seasoned(m) ? '' : ' muted'}">M${m}</th>`).join('')}<th class="num">Lifetime</th><th class="num">Age</th></tr></thead>`;
   let body = '';
-  progs.filter(pg => rows.some(r => r.t.program === pg)).forEach((pg, k) => {
-    const p = pooledRow(pg);
-    body += `<tr class="pooled${k ? ' grp' : ''}"><td>All ${pg} (pooled)</td><td>${pg}</td><td class="num">${(p.g / 1e6).toFixed(1)}</td>${cols.map((c, i) => cell(pg, p, c, i)).join('')}<td></td></tr>`;
-    rows.filter(r => r.t.program === pg).forEach(r => {
-      body += `<tr data-name="${r.t.name}"><td>${r.t.short}</td><td>${pg}</td><td class="num">${(r.g / 1e6).toFixed(1)}</td>${cols.map((c, i) => cell(pg, r, c, i)).join('')}<td class="num">M${r.m}</td></tr>`;
+  progs.filter(pg => ts.some(t => t.program === pg)).forEach((pg, k) => {
+    const ws = ts.filter(t => t.program === pg);
+    body += `<tr class="pooled${k ? ' grp' : ''}"><td>All ${pg} (pooled)</td><td>${pg}</td>` +
+      ages.map((m, i) => cell(pg, pooled(ws, m), i, !seasoned(m))).join('') + cell(pg, life(ws), ages.length, false) + '<td></td></tr>';
+    ws.forEach(t => {
+      body += `<tr data-name="${t.name}"><td>${t.short}</td><td>${pg}</td>` +
+        ages.map((m, i) => cell(pg, windowAt(t, win, m), i, !seasoned(m))).join('') +
+        cell(pg, life([t]), ages.length, false) + `<td class="num">M${t.points.at(-1)[0]}</td></tr>`;
     });
   });
-  return head + `<tbody>${body || '<tr><td colspan="7" class="muted">No trusts selected</td></tr>'}</tbody>`;
+  return head + `<tbody>${body || `<tr><td colspan="${ages.length + 4}" class="muted">No trusts selected</td></tr>`}</tbody>`;
 }
 
 function renderTable(state) {
