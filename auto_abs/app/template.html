@@ -69,6 +69,11 @@ table.age .num { text-align: right; }
 table.age tr.grp td { border-top: 2px solid var(--axis); }
 table.age tbody tr:hover td { outline: 1px solid var(--axis); outline-offset: -1px; }
 .muted { color: var(--muted); }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin: 8px 0 12px; }
+.tabs button { border: 0; background: transparent; color: var(--ink-2); font: inherit; font-weight: 600; padding: 8px 14px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+[data-show][hidden] { display: none !important; }
+table.age tr.pooled td { font-weight: 600; }
 .notes { color: var(--ink-2); font-size: 13px; }
 .notes li { margin-bottom: 4px; }
 @media (max-width: 640px) { .chart-wrap { height: 340px; } }
@@ -77,11 +82,24 @@ table.age tbody tr:hover td { outline: 1px solid var(--axis); outline-offset: -1
 <body>
 <main>
   <h1>Auto ABS Loss Curves</h1>
-  <p class="sub">Cumulative losses as a % of each trust's original pool balance, by month since closing. Month 0 is closing (0%); month <i>n</i> is the <i>n</i>th monthly collection period. Source: the monthly servicer report (EX-99.1) in each trust's Form 10-D on SEC EDGAR. Covers trusts issued from 2020 onward that file publicly.</p>
+  <div class="tabs" role="tablist">
+    <button type="button" role="tab" data-view="loss" aria-selected="true">Loss curves</button>
+    <button type="button" role="tab" data-view="recovery" aria-selected="false">Implied recovery rate</button>
+  </div>
+  <p class="sub" data-show="loss">Cumulative losses as a % of each trust's original pool balance, by month since closing. Month 0 is closing (0%); month <i>n</i> is the <i>n</i>th monthly collection period. Source: the monthly servicer report (EX-99.1) in each trust's Form 10-D on SEC EDGAR. Covers trusts issued from 2020 onward that file publicly.</p>
+  <p class="sub" data-show="recovery">Implied recovery rate = recoveries ÷ gross charge-offs over a trailing 3- or 6-month window, where recoveries = gross charge-offs − net losses (both from the cumulative figures in each servicer report). Black lines pool every selected trust in a program (sum of recoveries ÷ sum of charge-offs). Windows start no earlier than month 3, since recoveries lag charge-offs, and need at least $0.5m of charge-offs.</p>
   <div class="bar">
-    <div class="seg" role="group" aria-label="Loss measure">
+    <div class="seg" role="group" aria-label="Loss measure" data-show="loss">
       <button type="button" data-measure="net" aria-pressed="true">Net losses</button>
       <button type="button" data-measure="gross" aria-pressed="false">Gross losses</button>
+    </div>
+    <div class="seg" role="group" aria-label="Trailing window" data-show="recovery">
+      <button type="button" data-win="3" aria-pressed="false">TR3M</button>
+      <button type="button" data-win="6" aria-pressed="true">TR6M</button>
+    </div>
+    <div class="seg" role="group" aria-label="X axis" data-show="recovery">
+      <button type="button" data-xmode="cal" aria-pressed="true">By calendar month</button>
+      <button type="button" data-xmode="age" aria-pressed="false">By months since closing</button>
     </div>
     <span class="meta" id="asof"></span>
   </div>
@@ -91,6 +109,7 @@ table.age tbody tr:hover td { outline: 1px solid var(--axis); outline-offset: -1
     <ul>
       <li><b>Net</b>: CarMax shows its reported "Ratio of Cumulative Net Losses to Initial Pool Balance". Carvana shows its reported "Aggregate Realized Loss percentage" (cumulative net charge-offs ÷ original pool balance as of the cutoff date).</li>
       <li><b>Gross</b>: cumulative charged-off principal before recoveries ÷ the same original pool balance. CarMax: cumulative "Defaulted Receivables (charge-offs)". Carvana: "Aggregate Gross Charged-Off Receivables losses".</li>
+      <li><b>Implied recovery rate</b>: (gross charge-offs − net losses) ÷ gross charge-offs, from changes in the cumulative figures over the window. Definitions differ by issuer: CarMax nets "Recoveries" against defaulted principal; Carvana nets liquidation proceeds less liquidation expenses. Compare trends within an issuer rather than levels across issuers. Recoveries arrive after the charge-off (repossession, then auction), so a window with rising charge-offs reads low and one with falling charge-offs reads high; TR6M smooths this and the auction seasonality that shows in TR3M.</li>
       <li>Carvana Non-prime (N) trusts after 2021 and some Prime trusts were sold as 144A deals and file no 10-D, so they cannot appear here.</li>
       <li>When a filing is amended (10-D/A), the amended figure is used. A missing month is left as a gap; the curve is not shifted.</li>
       <li>This is a <b>snapshot</b> (hand-published, not refreshed).</li>
@@ -104,7 +123,30 @@ const DATA = /*__DATA__*/null;
 const YEAR_SLOTS = ['--y0','--y1','--y2','--y3','--y4','--y5','--y6','--y7'];
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 let measure = 'net';
+let view = 'loss';      // 'loss' | 'recovery'
+let win = 6;            // trailing window for recovery, months
+let xmode = 'cal';      // recovery x axis: 'cal' (collection period) | 'age' (months since closing)
 const charts = [];
+const MIN_SEASON = 3;   // a recovery window may not start before this month (recoveries lag charge-offs)
+const MIN_GROSS = 5e5;  // minimum gross charge-offs in a window, $
+const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const calIdx = period => { const [y, m] = period.split('-').map(Number); return y * 12 + m - 1; };
+const calLabel = v => `${MON[((v % 12) + 12) % 12]} ${String(Math.floor(v / 12)).slice(2)}`;
+const fmtM = v => '$' + (v / 1e6).toFixed(1) + 'm';
+
+// Trailing-window recoveries for one trust: one entry per month with a valid window.
+function recWindows(t, w) {
+  const byM = new Map(t.points.map(p => [p[0], p]));
+  const out = [];
+  t.points.forEach(p => {
+    const b = byM.get(p[0] - w);
+    if (p[0] - w < MIN_SEASON || !b) return;
+    const dg = p[4] - b[4], drec = dg - (p[5] - b[5]);
+    out.push({ m: p[0], period: p[3], dg, drec, rate: dg >= MIN_GROSS ? drec / dg * 100 : null });
+  });
+  return out;
+}
+const xOf = r => xmode === 'cal' ? calIdx(r.period) : r.m;
 
 function hexToRgb(h) { h = h.replace('#',''); return [0,2,4].map(i => parseInt(h.slice(i,i+2),16)); }
 function shade(hex, k) {
@@ -138,8 +180,10 @@ function buildCard(key) {
       <button class="chip link" data-act="all">Show all</button><button class="chip link" data-act="none">Hide all</button></div>
     <div class="chart-wrap"><canvas aria-label="${key} cumulative loss curves" role="img"></canvas></div>
     <div class="legend"></div>
-    <h3 class="tbl-title">Cumulative loss at fixed ages</h3>
-    <p class="meta">Shading compares trusts of the same program at the same age (darker = higher loss). Blank = trust not yet that old. Hover a row to highlight its line.</p>
+    <h3 class="tbl-title" data-show="loss">Cumulative loss at fixed ages</h3>
+    <p class="meta" data-show="loss">Shading compares trusts of the same program at the same age (darker = higher loss). Blank = trust not yet that old. Hover a row to highlight its line.</p>
+    <h3 class="tbl-title" data-show="recovery">Implied recovery rate, latest</h3>
+    <p class="meta" data-show="recovery">Lifetime = cumulative recoveries ÷ cumulative gross charge-offs. TR3M / TR6M = window ending in the latest collection period; grey with a date = trust has paid off, showing its last window. Shading compares current values within a program (darker = higher recovery).</p>
     <div class="tbl-wrap"><table class="age"></table></div>`;
   document.getElementById('charts').appendChild(card);
 
@@ -181,7 +225,11 @@ function buildCard(key) {
           backgroundColor: css('--surface'), titleColor: css('--ink'), bodyColor: css('--ink-2'), borderColor: css('--axis'), borderWidth: 1,
           callbacks: {
             title: items => items[0].dataset.label,
-            label: it => { const p = it.raw; return [`Month ${p.x}${p.period ? ' · period ending ' + p.period : ' · closing'}`, `${measure === 'net' ? 'Cumulative net loss' : 'Cumulative gross loss'}: ${fmtPct(p.y)}`]; },
+            label: it => {
+              const p = it.raw;
+              if (view === 'recovery') return [`${p.period ? 'Period ending ' + p.period : ''}${p.m != null ? ' · month ' + p.m : ''}`, `TR${win}M implied recovery: ${p.y.toFixed(1)}%`, `Recoveries ${fmtM(p.drec)} on charge-offs ${fmtM(p.dg)}`];
+              return [`Month ${p.x}${p.period ? ' · period ending ' + p.period : ' · closing'}`, `${measure === 'net' ? 'Cumulative net loss' : 'Cumulative gross loss'}: ${fmtPct(p.y)}`];
+            },
             labelColor: it => ({ borderColor: it.dataset.borderColor, backgroundColor: it.dataset.borderColor }),
           },
         },
@@ -210,21 +258,123 @@ function render(state) {
     b.classList.toggle('hidden-by-filter', !inFilter(state, t));
     b.setAttribute('aria-pressed', state.visible.has(t.name));
   });
-  const idx = measure === 'net' ? 2 : 1;
-  state.chart.data.datasets = issuer.trusts.filter(t => inFilter(state, t) && state.visible.has(t.name)).map(t => {
-    const col = colorFor(issuer, t);
-    const pts = [{ x: 0, y: 0, period: null }];
-    let prev = 0;
-    t.points.forEach(p => { if (p[0] > prev + 1) pts.push({ x: prev + 1, y: null }); pts.push({ x: p[0], y: p[idx], period: p[3] }); prev = p[0]; });
-    return { label: t.name, data: pts, borderColor: col, backgroundColor: col, baseColor: col, borderWidth: 2, borderDash: dashFor(t), pointRadius: 0, pointHoverRadius: 4, pointHitRadius: 6, tension: 0 };
-  });
+  const shown = issuer.trusts.filter(t => inFilter(state, t) && state.visible.has(t.name));
+  const line = (label, data, col, dash, base = 2) => ({ label, data, borderColor: col, backgroundColor: col, baseColor: col, baseWidth: base, borderWidth: base, borderDash: dash, pointRadius: 0, pointHoverRadius: 4, pointHitRadius: 6, tension: 0 });
+  const sc = state.chart.options.scales;
+  if (view === 'loss') {
+    const idx = measure === 'net' ? 2 : 1;
+    state.chart.data.datasets = shown.map(t => {
+      const pts = [{ x: 0, y: 0, period: null }];
+      let prev = 0;
+      t.points.forEach(p => { if (p[0] > prev + 1) pts.push({ x: prev + 1, y: null }); pts.push({ x: p[0], y: p[idx], period: p[3] }); prev = p[0]; });
+      return line(t.name, pts, colorFor(issuer, t), dashFor(t));
+    });
+    Object.assign(sc.x, { min: 0, max: undefined });
+    sc.x.title.text = 'Months since closing';
+    sc.x.ticks.callback = v => v;
+    Object.assign(sc.y, { min: 0, max: undefined });
+    sc.y.title.text = '% of original pool balance';
+  } else {
+    // Gaps (y: null) wherever a month has no valid window, so lines never bridge missing data.
+    const toPts = rs => {
+      const pts = []; let prev = null;
+      rs.forEach(r => { const x = xOf(r); if (prev != null && x > prev + 1) pts.push({ x: prev + 1, y: null }); pts.push({ x, y: r.rate, period: r.period, m: r.m, dg: r.dg, drec: r.drec }); prev = x; });
+      return pts;
+    };
+    const trustSets = shown.map(t => line(t.name, toPts(recWindows(t, win)), colorFor(issuer, t), dashFor(t), 1.5));
+    // Pooled line per program: sum recoveries / sum charge-offs across the shown trusts at each x.
+    const ink = css('--ink');
+    const pooled = [...new Set(shown.map(t => t.program))].map(pg => {
+      const acc = new Map();
+      shown.filter(t => t.program === pg).forEach(t => recWindows(t, win).forEach(r => {
+        const k = xOf(r), a = acc.get(k) || { dg: 0, drec: 0, n: 0 };
+        a.dg += r.dg; a.drec += r.drec; a.n++; acc.set(k, a);
+      }));
+      const rs = [...acc.entries()].sort((a, b) => a[0] - b[0])
+        .map(([k, a]) => ({ m: xmode === 'age' ? k : null, period: xmode === 'cal' ? calLabel(k) : null, dg: a.dg, drec: a.drec, rate: a.dg >= MIN_GROSS ? a.drec / a.dg * 100 : null, k }));
+      const pts = []; let prev = null;
+      rs.forEach(r => { if (prev != null && r.k > prev + 1) pts.push({ x: prev + 1, y: null }); pts.push({ x: r.k, y: r.rate, period: r.period, m: r.m, dg: r.dg, drec: r.drec }); prev = r.k; });
+      return line(`All ${pg} (pooled)`, pts, ink, dashFor({ program: pg }), 3);
+    });
+    state.chart.data.datasets = [...pooled, ...trustSets];
+    const xs = state.chart.data.datasets.flatMap(d => d.data.map(p => p.x));
+    Object.assign(sc.x, xs.length ? { min: Math.min(...xs), max: Math.max(...xs) } : { min: 0, max: undefined });
+    sc.x.title.text = xmode === 'cal' ? 'Collection period (end of trailing window)' : 'Months since closing (end of trailing window)';
+    sc.x.ticks.callback = v => xmode === 'cal' ? calLabel(v) : v;
+    Object.assign(sc.y, { min: 0, max: 100 });
+    sc.y.title.text = `TR${win}M recoveries ÷ gross charge-offs`;
+  }
   refreshStyles(state);
   renderTable(state);
 }
 
 const AGES = [6, 12, 18, 24, 36, 48];
 
+function renderRecoveryTable(state) {
+  const progs = [...new Set(state.issuer.trusts.map(t => t.program))];
+  const ts = state.issuer.trusts.filter(t => inFilter(state, t) && state.visible.has(t.name))
+    .sort((a, b) => progs.indexOf(a.program) - progs.indexOf(b.program));
+  const latest = (t, w) => recWindows(t, w).filter(r => r.rate != null).at(-1) || null;
+  const row = t => {
+    const last = t.points.at(-1), g = last[4], rec = g - last[5];
+    return { t, g, life: g >= MIN_GROSS ? rec / g * 100 : null, r3: latest(t, 3), r6: latest(t, 6), m: last[0] };
+  };
+  const rows = ts.map(row);
+  // Pooled row per program: lifetime from summed cumulative amounts; trailing windows pooled at the
+  // latest collection period, over the trusts with a valid window that month.
+  const pooledRow = pg => {
+    const rs = rows.filter(r => r.t.program === pg);
+    const g = rs.reduce((s, r) => s + r.g, 0), rec = rs.reduce((s, r) => s + (r.g - r.t.points.at(-1)[5]), 0);
+    const pool = w => {
+      const ws = rs.map(r => recWindows(r.t, w).at(-1)).filter(x => x && x.period === DATA.latestPeriod);
+      const dg = ws.reduce((s, x) => s + x.dg, 0), drec = ws.reduce((s, x) => s + x.drec, 0);
+      return dg >= MIN_GROSS ? { rate: drec / dg * 100, period: DATA.latestPeriod } : null;
+    };
+    return { pooled: pg, g, life: g >= MIN_GROSS ? rec / g * 100 : null, r3: pool(3), r6: pool(6) };
+  };
+  const cols = ['life', 'r6', 'r3'];
+  const val = (r, c) => c === 'life' ? r.life : (r[c] ? r[c].rate : null);
+  // A paid-off trust's last window is from an earlier period (and end-of-life reads high), so it
+  // is shown muted with its date and left out of the shading.
+  const stale = (r, c) => c !== 'life' && r[c] && r[c].period !== DATA.latestPeriod;
+  const range = {};
+  progs.forEach(pg => range[pg] = cols.map(c => {
+    const v = rows.filter(r => r.t.program === pg && !stale(r, c)).map(r => val(r, c)).filter(v => v != null);
+    return [Math.min(...v), Math.max(...v)];
+  }));
+  const cell = (pg, r, c, i) => {
+    const v = val(r, c);
+    if (v == null) return '<td class="num"></td>';
+    if (stale(r, c)) return `<td class="num muted">${v.toFixed(1)}% (${r[c].period.slice(0, 7)})</td>`;
+    const [lo, hi] = range[pg][i], f = hi > lo ? Math.max(0, Math.min(1, (v - lo) / (hi - lo))) : 0;
+    return `<td class="num" style="background:color-mix(in srgb, var(--accent) ${Math.round(6 + f * 44)}%, transparent)">${v.toFixed(1)}%</td>`;
+  };
+  const head = `<thead><tr><th>Trust</th><th>Program</th><th class="num">Cum. charge-offs $m</th><th class="num">Lifetime</th><th class="num">TR6M</th><th class="num">TR3M</th><th class="num">Age</th></tr></thead>`;
+  let body = '';
+  progs.filter(pg => rows.some(r => r.t.program === pg)).forEach((pg, k) => {
+    const p = pooledRow(pg);
+    body += `<tr class="pooled${k ? ' grp' : ''}"><td>All ${pg} (pooled)</td><td>${pg}</td><td class="num">${(p.g / 1e6).toFixed(1)}</td>${cols.map((c, i) => cell(pg, p, c, i)).join('')}<td></td></tr>`;
+    rows.filter(r => r.t.program === pg).forEach(r => {
+      body += `<tr data-name="${r.t.name}"><td>${r.t.short}</td><td>${pg}</td><td class="num">${(r.g / 1e6).toFixed(1)}</td>${cols.map((c, i) => cell(pg, r, c, i)).join('')}<td class="num">M${r.m}</td></tr>`;
+    });
+  });
+  return head + `<tbody>${body || '<tr><td colspan="7" class="muted">No trusts selected</td></tr>'}</tbody>`;
+}
+
 function renderTable(state) {
+  const tbl = state.card.querySelector('table.age');
+  if (view === 'recovery') {
+    tbl.innerHTML = renderRecoveryTable(state);
+  } else {
+    tbl.innerHTML = renderLossTable(state);
+  }
+  tbl.querySelectorAll('tbody tr[data-name]').forEach(tr => {
+    tr.onmouseenter = () => { state.hover = tr.dataset.name; refreshStyles(state); };
+    tr.onmouseleave = () => { state.hover = null; refreshStyles(state); };
+  });
+}
+
+function renderLossTable(state) {
   const idx = measure === 'net' ? 2 : 1;
   // Grouped by program (in filter-chip order); shading is relative within program + column,
   // since Non-prime/Select losses would otherwise wash out the Prime/AOT rows.
@@ -250,12 +400,7 @@ function renderTable(state) {
       AGES.map((m, i) => { const v = at(t, m); return `<td class="num" ${tint(t, v, i)}>${v == null ? '' : v.toFixed(2) + '%'}</td>`; }).join('') +
       `<td class="num">${last[idx].toFixed(2)}% <span class="muted">(M${last[0]})</span></td></tr>`;
   }).join('');
-  const tbl = state.card.querySelector('table.age');
-  tbl.innerHTML = head + `<tbody>${body || `<tr><td colspan="${AGES.length + 4}" class="muted">No trusts selected</td></tr>`}</tbody>`;
-  tbl.querySelectorAll('tbody tr[data-name]').forEach(tr => {
-    tr.onmouseenter = () => { state.hover = tr.dataset.name; refreshStyles(state); };
-    tr.onmouseleave = () => { state.hover = null; refreshStyles(state); };
-  });
+  return head + `<tbody>${body || `<tr><td colspan="${AGES.length + 4}" class="muted">No trusts selected</td></tr>`}</tbody>`;
 }
 
 function refreshStyles(state) {
@@ -265,27 +410,39 @@ function refreshStyles(state) {
   state.chart.data.datasets.forEach(d => {
     const dim = h && d.label !== h;
     d.borderColor = dim ? d.baseColor + '30' : d.baseColor;
-    d.borderWidth = h && d.label === h ? 3 : 2;
+    d.borderWidth = h && d.label === h ? d.baseWidth + 1 : d.baseWidth;
   });
   state.updating = true;
   try { state.chart.update('none'); } finally { state.updating = false; }
 }
 
 function downloadCsv(state) {
-  const rows = [['issuer','trust','program','issue_year','month','period_end','gross_loss_pct','net_loss_pct','original_pool_balance','edgar']];
+  const rows = [['issuer','trust','program','issue_year','month','period_end','gross_loss_pct','net_loss_pct','cum_gross_chargeoffs','cum_net_losses','cum_recoveries','original_pool_balance','edgar']];
   state.issuer.trusts.filter(t => inFilter(state, t) && state.visible.has(t.name)).forEach(t => {
-    rows.push([state.key, t.name, t.program, t.year, 0, '', 0, 0, t.pool, t.edgar]);
-    t.points.forEach(p => rows.push([state.key, t.name, t.program, t.year, p[0], p[3], p[1].toFixed(4), p[2].toFixed(4), t.pool, t.edgar]));
+    rows.push([state.key, t.name, t.program, t.year, 0, '', 0, 0, 0, 0, 0, t.pool, t.edgar]);
+    t.points.forEach(p => rows.push([state.key, t.name, t.program, t.year, p[0], p[3], p[1].toFixed(4), p[2].toFixed(4), p[4], p[5], p[4] - p[5], t.pool, t.edgar]));
   });
   const blob = new Blob([rows.map(r => r.map(v => /[",]/.test(String(v)) ? `"${String(v).replace(/"/g,'""')}"` : v).join(',')).join('\n')], { type: 'text/csv' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${state.key.toLowerCase()}_abs_loss_curves_${DATA.asOf}.csv`; a.click();
 }
 
-document.querySelectorAll('[data-measure]').forEach(b => b.onclick = () => {
-  measure = b.dataset.measure;
-  document.querySelectorAll('[data-measure]').forEach(x => x.setAttribute('aria-pressed', x === b));
-  charts.forEach(render);
-});
+function segToggle(attr, apply) {
+  document.querySelectorAll(`[${attr}]`).forEach(b => b.onclick = () => {
+    apply(b.getAttribute(attr));
+    document.querySelectorAll(`[${attr}]`).forEach(x => x.setAttribute('aria-pressed', x === b));
+    charts.forEach(render);
+  });
+}
+segToggle('data-measure', v => { measure = v; });
+segToggle('data-win', v => { win = +v; });
+segToggle('data-xmode', v => { xmode = v; });
+
+function showView() {
+  document.querySelectorAll('[data-show]').forEach(el => { el.hidden = el.dataset.show !== view; });
+  document.querySelectorAll('[data-view]').forEach(b => b.setAttribute('aria-selected', b.dataset.view === view));
+}
+document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => { view = b.dataset.view; showView(); charts.forEach(render); });
+showView();
 
 document.getElementById('asof').textContent = `Data as of ${DATA.asOf} · latest collection period ${DATA.latestPeriod}`;
 Object.keys(DATA.issuers).forEach(buildCard);

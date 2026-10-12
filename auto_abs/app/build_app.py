@@ -35,8 +35,11 @@ def main():
             "program": r["program"], "year": int(r["issue_year"]), "cik": r["cik"],
             "pool": round(float(r["original_pool_balance"])), "edgar": edgar_link(r["cik"]), "points": [],
         })
+        # [month, gross %, net %, period end, cum gross $, cum net $] -- the $ amounts drive the
+        # trailing-window recovery rates (recoveries = gross - net charge-offs).
         t["points"].append([int(r["month"]), round(float(r["gross_loss_pct"]), 4),
-                            round(float(r["net_loss_pct"]), 4), r["period_end"]])
+                            round(float(r["net_loss_pct"]), 4), r["period_end"],
+                            round(float(r["cum_gross_loss"])), round(float(r["cum_net_loss"]))])
 
     issuers = {}
     for key in ISSUER_ORDER:
