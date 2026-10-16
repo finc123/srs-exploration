@@ -17,10 +17,13 @@ In VS Code / Jupyter, pick the kernel **Python (exploration)**. To re-register i
 Notebooks call `snowflake.connector.connect(connection_name="default")`, defined in
 `~\.snowflake\connections.toml`:
 
-- `[default]` uses browser OAuth (`OAUTH_AUTHORIZATION_CODE`). The browser opens on the first
-  connect, then the token is cached until it expires.
-- `[keypair]` uses key-pair JWT, which is currently broken (private key / registered public key mismatch).
-  To switch back once fixed, set `$env:SNOWFLAKE_CONNECTION = "keypair"`, or swap the section names.
+- `[default]` uses key-pair JWT (`SNOWFLAKE_JWT`) with `~\.snowflake\keys\fin_creedon_rsa_key.p8`.
+  No browser prompt. `[keypair]` is an identical alias.
+- `[oauth]` uses browser OAuth (`OAUTH_AUTHORIZATION_CODE`) as a fallback. The browser opens on the
+  first connect, then the token is cached until it expires. To use it, set
+  `$env:SNOWFLAKE_CONNECTION = "oauth"` (notebooks that read that variable only).
+
+The OAuth token cache below only applies to the `[oauth]` connection.
 
 The token cache needs `tools\dpapi_keyring.py`. Windows Credential Manager rejects OAuth
 tokens because they are too large (WinError 1783), so this keyring backend stores them as

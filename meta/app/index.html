@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Meta Muse</title>
-<meta name="description" content="Meta Muse launch tracker: app downloads and DAU, ad spend, launch benchmark, web traffic, web and in-app subscriptions and flows, and Link agentic checkout. Daily and trailing 7-day, refreshed by the meta_muse workflow.">
+<meta name="description" content="Meta Muse launch tracker: app downloads and DAU, ad spend, launch benchmark, time spent, web traffic, web and in-app subscriptions and flows, and Link agentic checkout. Daily and trailing 7-day, refreshed by the meta_muse workflow.">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
   :root {
@@ -120,10 +120,11 @@ function draw(id, labels, datasets, opts = {}) {
     options: {
       maintainAspectRatio: false, animation: false, interaction: { mode: "index", intersect: false },
       plugins: { legend: { labels: { color: ink, boxWidth: 12 } },
-                 tooltip: { callbacks: { label: opts.label || (c => `${c.dataset.label}: ${opts.ratio ? fmt(c.parsed.y * 100, 1) + "%" : opts.pct ? pct(c.parsed.y) : fmtBig(c.parsed.y)}`),
+                 tooltip: { filter: opts.skipNull ? c => c.parsed.y != null : undefined, callbacks: { label: opts.label || (c => `${c.dataset.label}: ${opts.ratio ? fmt(c.parsed.y * 100, 1) + "%" : opts.pct ? pct(c.parsed.y) : fmtBig(c.parsed.y)}`),
                                          footer: opts.footer } } },
       scales: {
-        x: { ticks: { color: ink, maxTicksLimit: 10, maxRotation: 0 }, grid: { display: false }, stacked: !!opts.stacked,
+        // offset: line-only date charts pad like the bar charts, so a date sits at the same x on every chart.
+        x: { ticks: { color: ink, maxTicksLimit: 10, maxRotation: 0 }, grid: { display: false }, stacked: !!opts.stacked, ...(opts.offset === undefined ? {} : { offset: opts.offset }),
              title: { display: !!opts.xTitle, text: opts.xTitle, color: ink } },
         // Fixed y-axis width, so full-width charts stacked on the page put each date at the same x.
         y: { type: opts.log ? "logarithmic" : "linear", afterFit: s => { s.width = 64; },
@@ -211,6 +212,62 @@ const BLOCKS = [
       };
       buttons(b.ctls, "Metric", Object.keys(METRICS), st, go);
       buttons(b.ctls, "Scale", ["Linear", "Log"], st, go); go();
+  } },
+  { key: "time_spent", render(rows, sections) {
+      const b = block("Engagement: time spent",
+        "SensorTower US time spent (iPhone + Android) for the launch benchmark apps. Sessions per DAU = sessions / daily active users: how many times an average daily user opens the app. Minutes per session = minutes / sessions, the average session length; " +
+        "minutes per DAU = minutes / daily active users, which also rises when people open the app more often. " +
+        "Lines are the trailing 7-day ratio (7-day minutes over 7-day sessions or DAU); hover for the daily value. Days with no session data are gaps. " +
+        "Days since launch uses the same day 0 as the benchmark above; By date shows the apps on the same calendar as the daily charts below (from 2026-08-01); time-spent data ends about a week before DAU. " +
+        "Clubhouse is not shown: its SensorTower export has no session or time-spent data. Sora appears in Days since launch only: SensorTower has no Sora data after March 2026.");
+      b.el.insertAdjacentHTML("beforeend", `<div class="chart" style="height:320px"><canvas id="c_time"></canvas></div>`);
+      const st = { Metric: "Minutes per session", View: "Days since launch" }, C = COLORS();
+      const METRICS = { "Sessions per DAU": "SESSIONS_PER_DAU", "Minutes per session": "MIN_PER_SESSION", "Minutes per DAU": "MIN_PER_DAU" };
+      // Same order as the benchmark, so each app keeps its benchmark colour.
+      const ORDER = ["Muse", "ChatGPT", "Threads", "Sora", "Claude", "Clubhouse"];
+      const go = () => {
+        const m = METRICS[st.Metric], launch = st.View === "Days since launch", count = m === "SESSIONS_PER_DAU";
+        const vr = rows.filter(r => r.BENCH_WINDOW === (launch ? "launch" : "recent") && (launch || CAL.includes(r.DATE)));
+        const apps = ORDER.filter(a => vr.some(r => r.APP === a && r[m + "_TR7D"] != null));
+        // By date uses the page's shared calendar (CAL), so each date sits at the same x as the daily charts below.
+        const labels = launch ? Array.from({ length: Math.max(0, ...vr.map(r => r.DAY_N)) + 1 }, (_, i) => i) : CAL;
+        const at = new Map(labels.map((l, i) => [l, i]));
+        const daily = {};
+        const sets = apps.map(a => {
+          const data = labels.map(() => null), raw = labels.map(() => null);
+          for (const r of vr) if (r.APP === a) { const i = at.get(launch ? r.DAY_N : r.DATE); data[i] = r[m + "_TR7D"]; raw[i] = r[m]; }
+          daily[a] = raw;
+          const c = C[ORDER.indexOf(a)];
+          return { type: "line", label: a, data, borderColor: c, backgroundColor: c, pointRadius: 0,
+                   borderWidth: a === "Muse" ? 3.5 : 1.5, spanGaps: false, order: a === "Muse" ? 0 : 1 };
+        });
+        draw("c_time", labels, sets, {
+          xTitle: launch ? "Days since launch" : undefined, skipNull: true, offset: !launch,
+          label: c => count ? `${c.dataset.label}: ${fmt(c.parsed.y, 1, 1)} sessions per DAU TR7D (daily ${fmt(daily[c.dataset.label][c.dataIndex], 1, 1)})`
+                            : `${c.dataset.label}: ${fmt(c.parsed.y, 1, 1)} min TR7D (daily ${fmt(daily[c.dataset.label][c.dataIndex], 1, 1)})`,
+        });
+      };
+      buttons(b.ctls, "Metric", Object.keys(METRICS), st, go);
+      buttons(b.ctls, "View", ["Days since launch", "By date"], st, go); go();
+
+      // Web (SimilarWeb) for Muse, ChatGPT and Claude, US, last 90 days on calendar dates. App time spent is the chart above.
+      const web = sections.web_time_spent || [];
+      if (!web.some(r => r.MIN_PER_VISIT_TR7D != null)) return;
+      b.el.insertAdjacentHTML("beforeend", `<div style="margin-top:20px">${col("c_web", "Web: minutes per visit, US")}</div>
+        <p class="note">muse.ai, chatgpt.com and claude.ai (SimilarWeb, desktop + mobile web): average visit duration, weighted by visits over 7 days. A SimilarWeb visit runs until 30 minutes idle, while an app session above is each time the app is opened, so web visits are longer by construction: compare sites with each other, not with the app chart. Muse starts at launch. Sora has no web series (sora.com is not tracked). Hover for the daily value.</p>`);
+      // Same shared calendar as the daily charts below.
+      const WEB_APPS = ["Muse", "ChatGPT", "Claude"], dates = CAL, at = new Map(dates.map((d, i) => [d, i]));
+      const wdaily = [];
+      const wsets = WEB_APPS.filter(a => web.some(r => r.APP === a && r.MIN_PER_VISIT_TR7D != null)).map(a => {
+        const line = dates.map(() => null), raw = dates.map(() => null);
+        for (const r of web) if (r.APP === a && at.has(r.DATE)) { line[at.get(r.DATE)] = r.MIN_PER_VISIT_TR7D; raw[at.get(r.DATE)] = r.MIN_PER_VISIT; }
+        wdaily.push(raw);
+        const c = C[ORDER.indexOf(a)];
+        return { type: "line", label: `${a} (${web.find(r => r.APP === a).DOMAIN})`, data: line, borderColor: c, backgroundColor: c, pointRadius: 0,
+                 borderWidth: a === "Muse" ? 3.5 : 1.5, spanGaps: false, order: a === "Muse" ? 0 : 1 };
+      });
+      draw("c_web", dates, wsets, { skipNull: true, offset: true,
+        label: c => `${c.dataset.label}: ${fmt(c.parsed.y, 1, 1)} min TR7D (daily ${fmt(wdaily[c.datasetIndex][c.dataIndex], 1, 1)})` });
   } },
   { key: "app_usage_daily", render(rows) {
       const b = block("AI assistant share (SensorTower, daily)",

@@ -1,22 +1,24 @@
 """Meta Muse app: source loads, report sections and their methodology, in one place.
 
-Two layers, mirroring the planned monorepo workflow (`workflows/jobs/meta/meta_muse.yaml`):
+Two layers, mirroring the monorepo workflow (`workflows/jobs/meta/muse.yaml`):
 
-1. LOADS (Snowflake SQL). Narrow row-level pulls from the raw panels into what
-   will become `srs_slice.meta.muse_*` tables:
+1. LOADS (Snowflake SQL). Narrow pulls into what are `srs_mcp.meta.muse_*` in the
+   monorepo: the card panels are tables there; everything else is a view over a
+   production table (SensorTower CORE, Pathmatics, SimilarWeb VISITS_V2, NIQ ITEMS_LIVE):
      card_txns     one row per matched card/bank transaction (signal = muse_web | agentic)
      panel_totals  distinct transactions per source per day (denominator for per-million)
      member_panel  days each web Muse payer transacted (any merchant), per source (panel activity)
      niq_receipts  one row per Muse e-receipt line item
      app_usage     SensorTower downloads / DAU per app x country x day
-     benchmark     SensorTower US downloads per benchmark app x day, day 0 to +120 (+ Clubhouse export)
+     benchmark     SensorTower US downloads, DAU, sessions, minutes per benchmark app x day: day 0 to +120
+                   and the last 100 days, tagged by bench_window
      ad_spend      Pathmatics Muse digital ad spend per country x publisher x day
      web_traffic   SimilarWeb muse.ai visits per country x day
-   Each table is named with a muse_ prefix (srs_slice.meta.muse_card_txns, ...): the
+   Each table is named with a muse_ prefix (srs_mcp.meta.muse_card_txns, ...): the
    schema is shared with other Meta datasets. Card loads are one pruned range query
    per source, cached locally per day by build_json.py.
 
-2. SECTIONS (portable SQL over the srs_slice.meta.muse_* tables). Run by DuckDB over
+2. SECTIONS (portable SQL over the srs_mcp.meta.muse_* tables). Run by DuckDB over
    the cached loads here, and by Snowflake in the monorepo exporter, so the
    strings are written in the common subset of both dialects (CASE, COUNT
    DISTINCT, CAST AS VARCHAR, MEDIAN). Column aliases are UPPERCASE because
@@ -39,7 +41,8 @@ CARD_START = "2026-08-01"      # card / e-receipt window start (pre-launch basel
 APP_START = "2026-06-01"       # SensorTower window start (Meta AI baseline)
 
 CARD_LAG_DAYS = 5              # Yodlee/279 day volume is still filling 5-10 days back
-NIQ_LAG_DAYS = 1               # NIQ is complete through yesterday
+NIQ_LAG_DAYS = 2               # SRS_SLICE.COMMON.ITEMS_LIVE is rebuilt ~2:30 AM ET, before NIQ fills in
+                               # yesterday (~10:45 AM ET), so it is complete through two days ago
 REFRESH_DAYS = 14              # card days newer than this are re-pulled every run
 TR_DAYS = 7                    # trailing window for every *_TR7D column
 SUB_GAP_DAYS = 35              # card subs: a payment after this many days without one is a new subscription,
@@ -66,9 +69,9 @@ APP_KEYS = {
 SHARE_APPS = ["Muse", "ChatGPT", "Gemini", "Claude", "Grok"]
 
 # Launch benchmark: US downloads from each app's day 0, by key (verified 2026-10-08; CORE
-# history starts on launch day for each). Clubhouse is not in CORE: it comes from a
-# SensorTower portal export (BENCHMARK_SNAPSHOT), with day 0 at its viral breakout rather
-# than its spring-2020 invite-only release.
+# history starts on launch day for each). Clubhouse is not in CORE yet (being added
+# upstream); once it is, add its key here, with day 0 at its viral breakout (BENCHMARK_DAY0)
+# rather than its spring-2020 invite-only release.
 BENCHMARK_KEYS = {
     "Muse": MUSE_KEY,
     "Sora": "68dc489f4e04a24f7d0d0aeb",
@@ -77,7 +80,8 @@ BENCHMARK_KEYS = {
     "Claude": APP_KEYS["Claude"],
 }
 BENCHMARK_DAYS = 120
-BENCHMARK_SNAPSHOT = "benchmark_snapshot.xlsx"
+RECENT_DAYS = 90               # time spent: the "Last 90 days" calendar view
+RECENT_PULL_DAYS = RECENT_DAYS + 10   # margin for the SensorTower lag; the section trims to RECENT_DAYS
 BENCHMARK_DAY0 = {"Clubhouse": "2020-12-15"}   # first day of the sustained jump in US downloads (15k -> 25k)
 # Muse's day 0 is the public launch (LAUNCH), not its partial first SensorTower day (09-07); applied in the section SQL.
 
@@ -217,23 +221,23 @@ def panel_total_sql(src: dict, start: str, end: str) -> str:
     """
 
 
-# Active mailboxes only: the SRS convention for NIQ panels (srs_slice.rblx.receipts joins
-# share_niq.srs.mailboxes_enhanced and filters status = 'active' downstream).
+# Active mailboxes only: the SRS convention for NIQ panels. Read from SRS_SLICE.COMMON.ITEMS_LIVE, the
+# processed NIQ line-item table (mailbox status already joined). No QUALITY filter: for Muse the only
+# non-quality merchants are the iTunes / Google Play "Cancellation" senders, which the flows need.
 NIQ_SQL = f"""
-    SELECT i.order_date::DATE AS order_date, i.mailbox_id, i.merchant_name, i.description,
-           i.item_price, i.order_total, m.status AS mailbox_status,
-           CASE WHEN i.description ILIKE '%power%' THEN 'Power'
-                WHEN i.description ILIKE '%max%' THEN 'Max' ELSE 'Other' END AS plan,
-           CASE WHEN i.merchant_name ILIKE '%cancel%' OR i.description ILIKE '%cancel%'
-                     OR i.description ILIKE '%will end on%' THEN 'cancel'
-                WHEN i.description ILIKE '%trial%' THEN 'trial' ELSE 'charge' END AS kind,
-           CASE WHEN i.merchant_name ILIKE 'itunes%' THEN 'Apple'
-                WHEN i.merchant_name ILIKE 'google play%' THEN 'Google Play' ELSE 'Other' END AS store
-    FROM SHARE_NIQ.SRS.ITEMS_EXTENDED i
-    JOIN SHARE_NIQ.SRS.MAILBOXES_ENHANCED m ON m.mailbox_id = i.mailbox_id
-    WHERE i.order_date BETWEEN '{CARD_START}' AND CURRENT_DATE
-      AND i.description ILIKE '%muse from meta%'
-      AND m.status ILIKE 'active'
+    SELECT orderdate::DATE AS order_date, mailbox_id, merchant_name, item_description AS description,
+           item_price, ordertotal AS order_total, mailbox_status,
+           CASE WHEN item_description ILIKE '%power%' THEN 'Power'
+                WHEN item_description ILIKE '%max%' THEN 'Max' ELSE 'Other' END AS plan,
+           CASE WHEN merchant_name ILIKE '%cancel%' OR item_description ILIKE '%cancel%'
+                     OR item_description ILIKE '%will end on%' THEN 'cancel'
+                WHEN item_description ILIKE '%trial%' THEN 'trial' ELSE 'charge' END AS kind,
+           CASE WHEN merchant_name ILIKE 'itunes%' THEN 'Apple'
+                WHEN merchant_name ILIKE 'google play%' THEN 'Google Play' ELSE 'Other' END AS store
+    FROM srs_slice.common.items_live
+    WHERE orderdate BETWEEN '{CARD_START}' AND CURRENT_DATE
+      AND item_description ILIKE '%muse from meta%'
+      AND mailbox_status ILIKE 'active'
 """
 
 # CORE is unclustered on date (a full ~20 GB scan whatever the filter), so it
@@ -251,13 +255,17 @@ APP_USAGE_SQL = f"""
     GROUP BY 1, 2, 3
 """
 
-# One CORE read for the benchmark apps: US, from each app's first download day to +BENCHMARK_DAYS.
+# One CORE read for the benchmark apps, US, in two windows (bench_window): 'launch' = each app's first
+# download day to +BENCHMARK_DAYS, 'recent' = the last RECENT_PULL_DAYS. A day in both is returned twice.
+# Zero sessions or minutes is a missing value, like DAU.
 BENCHMARK_SQL = f"""
     WITH d AS (
         SELECT date::DATE AS date,
                CASE unified_product_key {" ".join(f"WHEN '{k}' THEN '{a}'" for a, k in BENCHMARK_KEYS.items())} END AS app,
                SUM(downloads) AS downloads,
-               NULLIF(SUM(dau), 0) AS dau
+               NULLIF(SUM(dau), 0) AS dau,
+               NULLIF(SUM(sessions), 0) AS sessions,
+               NULLIF(SUM(minutes), 0) AS minutes
         FROM sensortower.common.core
         WHERE unified_product_key IN ({", ".join(f"'{k}'" for k in BENCHMARK_KEYS.values())})
           AND country_code = 'US'
@@ -265,9 +273,13 @@ BENCHMARK_SQL = f"""
     ), f AS (
         SELECT app, MIN(date) AS day0 FROM d WHERE downloads > 0 GROUP BY app
     )
-    SELECT d.date, d.app, d.downloads, d.dau
+    SELECT d.date, d.app, 'launch' AS bench_window, d.downloads, d.dau, d.sessions, d.minutes
     FROM d JOIN f ON f.app = d.app
     WHERE d.date BETWEEN f.day0 AND DATEADD('day', {BENCHMARK_DAYS}, f.day0)
+    UNION ALL
+    SELECT d.date, d.app, 'recent', d.downloads, d.dau, d.sessions, d.minutes
+    FROM d
+    WHERE d.date >= DATEADD('day', -{RECENT_PULL_DAYS}, CURRENT_DATE)
 """
 
 # Pathmatics digital ad spend for Muse. US and Canada are the only material regions.
@@ -284,15 +296,22 @@ AD_SPEND_SQL = f"""
     GROUP BY 1, 2, 3
 """
 
-# SimilarWeb daily visits (muse.ai in the Snowflake pipeline from 2026-10-08).
-WEB_DOMAINS = ["muse.ai"]
+# SimilarWeb daily visits and total time spent from the pipeline's consumer table. time_spent is
+# total minutes (visits x average visit duration), so minutes per visit = time_spent / visits.
+# chatgpt.com and claude.ai are the comparison sites for the web time-spent chart.
+WEB_DOMAINS = ["muse.ai", "chatgpt.com", "claude.ai"]
 WEB_TRAFFIC_SQL = f"""
-    SELECT date::DATE AS date, domain, country, value AS visits
-    FROM similarweb.snowflake_integration.downstream_daily
+    SELECT date::DATE AS date, domain, country,
+           SUM(CASE WHEN metric = 'all_traffic_visits' THEN value END) AS visits,
+           SUM(CASE WHEN metric = 'all_traffic_time_spent' THEN value END) AS time_spent
+    FROM similarweb.common.visits_v2
     WHERE domain IN ({", ".join(f"'{d}'" for d in WEB_DOMAINS)})
-      AND metric = 'ALL_TRAFFIC_VISITS'
+      AND panel = 'all domain'
+      AND metric IN ('all_traffic_visits', 'all_traffic_time_spent')
+      AND channel IS NULL
       AND country IN ('US', 'WW')
       AND date >= '{CARD_START}'
+    GROUP BY 1, 2, 3
 """
 
 # ---------------------------------------------------------------------------
@@ -316,7 +335,7 @@ SECTIONS: list[dict] = [
             SELECT CAST(day AS VARCHAR) AS DATE, plan AS PLAN,
                    COUNT(DISTINCT member) AS MEMBERS, COUNT(*) AS TXNS
             FROM (SELECT DISTINCT member, day, amount, plan
-                  FROM srs_slice.meta.muse_card_txns
+                  FROM srs_mcp.meta.muse_card_txns
                   WHERE signal = 'muse_web' AND day BETWEEN '{card_start}' AND '{card_through}'
                     AND """ + bucket_filter_sql() + """) t
             GROUP BY 1, 2 ORDER BY 1, 2
@@ -362,15 +381,15 @@ SECTIONS: list[dict] = [
                    COUNT(DISTINCT CASE WHEN kind = 'charge' THEN mailbox_id END) AS CHARGES,
                    COUNT(DISTINCT CASE WHEN kind = 'cancel' THEN mailbox_id END) AS CANCELS,
                    COUNT(DISTINCT CASE WHEN kind = 'trial' THEN mailbox_id END) AS TRIALS
-            FROM srs_slice.meta.muse_niq_receipts
+            FROM srs_mcp.meta.muse_niq_receipts
             WHERE order_date BETWEEN '{card_start}' AND '{niq_through}' AND store <> 'Other'
             GROUP BY 1, 2, 3 ORDER BY 1, 2, 3
         """,
         methodology=dict(
-            source="NIQ e-receipts, SHARE_NIQ.SRS.ITEMS_EXTENDED (one row per receipt line item), joined to "
-                   "SHARE_NIQ.SRS.MAILBOXES_ENHANCED for mailbox status.",
+            source="NIQ e-receipts, SRS_SLICE.COMMON.ITEMS_LIVE (the processed NIQ line-item table, one row per "
+                   "receipt line item, with mailbox status), via the SRS_MCP.META.MUSE_NIQ_RECEIPTS view.",
             filters=[
-                ("Active mailboxes only (MAILBOXES_ENHANCED.status = 'active')",
+                ("Active mailboxes only (mailbox_status = 'active')",
                  "Inactive mailboxes have disconnected or stopped syncing, so their receipt history stops. "
                  "Keeping them would mix panel churn into the trend; this is the SRS convention for NIQ "
                  "(e.g. the Roblox bookings slice). It removes 11 of 275 Muse mailboxes as of 2026-10-07."),
@@ -400,7 +419,7 @@ SECTIONS: list[dict] = [
         sql="""
             WITH r AS (
                 SELECT DISTINCT order_date, mailbox_id, store, plan, kind
-                FROM srs_slice.meta.muse_niq_receipts
+                FROM srs_mcp.meta.muse_niq_receipts
                 WHERE order_date BETWEEN '{card_start}' AND '{niq_through}' AND store <> 'Other'
             ), g AS (
                 SELECT first_day AS day, store, plan, COUNT(*) AS gross_adds
@@ -451,12 +470,12 @@ SECTIONS: list[dict] = [
         sql=f"""
             WITH c AS (
                 SELECT DISTINCT member, day, plan
-                FROM srs_slice.meta.muse_card_txns
+                FROM srs_mcp.meta.muse_card_txns
                 WHERE signal = 'muse_web' AND day BETWEEN '{{card_start}}' AND '{{card_through}}'
                   AND {bucket_filter_sql()}
             ), d AS (
                 -- days each payer transacted with any merchant (panel activity)
-                SELECT DISTINCT member, day FROM srs_slice.meta.muse_member_panel
+                SELECT DISTINCT member, day FROM srs_mcp.meta.muse_member_panel
             ), t AS (
                 SELECT member, MIN(day) AS first_seen FROM d GROUP BY member
             ), p AS (
@@ -574,11 +593,11 @@ SECTIONS: list[dict] = [
         sql="""
             WITH t AS (
                 SELECT day, COUNT(DISTINCT source || '|' || txn_id) AS txns
-                FROM srs_slice.meta.muse_card_txns
+                FROM srs_mcp.meta.muse_card_txns
                 WHERE signal = 'agentic'
                 GROUP BY day
             ), p AS (
-                SELECT day, SUM(total_txn) AS panel_txns FROM srs_slice.meta.muse_panel_totals GROUP BY day
+                SELECT day, SUM(total_txn) AS panel_txns FROM srs_mcp.meta.muse_panel_totals GROUP BY day
             )
             SELECT CAST(p.day AS VARCHAR) AS DATE,
                    COALESCE(t.txns, 0) AS TXNS,
@@ -627,7 +646,7 @@ SECTIONS: list[dict] = [
                 UNION ALL SELECT 'Last 28 days', CAST('{merch_start}' AS DATE)
             ), t AS (
                 SELECT DISTINCT w.window_name, c.source, c.txn_id, c.member, c.amount, c.merchant
-                FROM srs_slice.meta.muse_card_txns c
+                FROM srs_mcp.meta.muse_card_txns c
                 JOIN w ON c.day BETWEEN w.start_day AND '{card_through}'
                 WHERE c.signal = 'agentic'
             ), tot AS (
@@ -675,7 +694,7 @@ SECTIONS: list[dict] = [
                 SELECT day, source, amount, merchant,
                        REGEXP_REPLACE(description, 'XXXX+[0-9]+', 'XXXX') AS description,
                        CASE WHEN description ILIKE '%linkagnt*%' THEN 'LINKAGNT*' ELSE 'LINK*' END AS form
-                FROM srs_slice.meta.muse_card_txns
+                FROM srs_mcp.meta.muse_card_txns
                 WHERE signal = 'agentic' AND merchant IS NOT NULL AND day <= '{card_through}'
             ), r AS (
                 -- Card panels first: they carry the plain Stripe descriptor, where bank rows wrap it in
@@ -708,7 +727,7 @@ SECTIONS: list[dict] = [
         sql="""
             SELECT CAST(date AS VARCHAR) AS DATE, app AS APP, country AS COUNTRY,
                    downloads AS DOWNLOADS, dau AS DAU
-            FROM srs_slice.meta.muse_app_usage
+            FROM srs_mcp.meta.muse_app_usage
             WHERE date >= '{app_start}'
             ORDER BY 2, 3, 1
         """,
@@ -747,7 +766,7 @@ SECTIONS: list[dict] = [
         sql="""
             SELECT CAST(date AS VARCHAR) AS DATE, country AS COUNTRY, publisher AS PUBLISHER,
                    ROUND(SUM(spend), 0) AS SPEND
-            FROM srs_slice.meta.muse_ad_spend
+            FROM srs_mcp.meta.muse_ad_spend
             WHERE date >= '{card_start}'
             GROUP BY 1, 2, 3 ORDER BY 1, 2, 3
         """,
@@ -774,13 +793,14 @@ SECTIONS: list[dict] = [
         start="card_start", through=None,
         sql="""
             SELECT CAST(date AS VARCHAR) AS DATE, country AS COUNTRY, ROUND(SUM(visits), 0) AS VISITS
-            FROM srs_slice.meta.muse_web_traffic
-            WHERE date >= '{card_start}'
+            FROM srs_mcp.meta.muse_web_traffic
+            WHERE domain = 'muse.ai'
+              AND date >= '{card_start}'
             GROUP BY 1, 2 ORDER BY 1, 2
         """,
         methodology=dict(
-            source="SimilarWeb daily visits, SIMILARWEB.SNOWFLAKE_INTEGRATION.DOWNSTREAM_DAILY (metric "
-                   "ALL_TRAFFIC_VISITS).",
+            source="SimilarWeb daily visits, SIMILARWEB.COMMON.VISITS_V2 (the SimilarWeb pipeline's consumer "
+                   "table; metric all_traffic_visits).",
             filters=[
                 ("Domain muse.ai, desktop plus mobile web, subdomains included", "Muse's web app."),
                 ("Country US and WW", "WW is SimilarWeb's worldwide total, not a sum of countries."),
@@ -809,31 +829,26 @@ SECTIONS: list[dict] = [
                                             ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS CUM_DOWNLOADS,
                        SUM(downloads) OVER (PARTITION BY app ORDER BY date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS SUM7,
                        COUNT(*) OVER (PARTITION BY app ORDER BY date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS N7
-                FROM srs_slice.meta.muse_benchmark
-                WHERE NOT (app = 'Muse' AND date < '""" + LAUNCH + """')   -- Muse day 0 = public launch
+                FROM srs_mcp.meta.muse_benchmark
+                WHERE bench_window = 'launch'
+                  AND NOT (app = 'Muse' AND date < '""" + LAUNCH + """')   -- Muse day 0 = public launch
             ) t
             ORDER BY APP, DAY_N
         """,
         methodology=dict(
-            source="SensorTower SENSORTOWER.COMMON.CORE for Muse, Sora, Threads, ChatGPT and Claude; Clubhouse "
-                   "from a SensorTower portal export (it is not in CORE).",
+            source="SensorTower SENSORTOWER.COMMON.CORE for Muse, Sora, Threads, ChatGPT and Claude. Clubhouse "
+                   "will be added once it is in CORE.",
             filters=[
                 ("Unified product keys: " + ", ".join(f"{a} {k}" for a, k in BENCHMARK_KEYS.items()),
                  "Matched by key, never by name (clones share names)."),
-                ("US only; iPhone + Android phone", "The export for Clubhouse is summed the same way (iPad excluded)."),
+                ("US only; iPhone + Android phone", "iPad excluded, as in every SensorTower section."),
                 (f"Day 0 = first day with downloads; window day 0 to {BENCHMARK_DAYS}",
                  "Each app's CORE history starts on its launch day."),
-                (f"Clubhouse day 0 = {BENCHMARK_DAY0['Clubhouse']}",
-                 "Its viral breakout, the first day of the sustained jump in US downloads, rather than its "
-                 "invite-only iOS release in spring 2020."),
                 (f"Muse day 0 = {LAUNCH} (public launch)",
                  "SensorTower's first Muse day, 2026-09-07, is a partial pre-launch day (about 8k US downloads "
                  "against about 115k on launch day), so day 0 is the first full day. Those ~8k downloads "
                  "are left out of Muse's cumulative total, which understates it by under 1% after the first "
                  "week."),
-                ("Retention proxy: Clubhouse not shown",
-                 "Its day 0 is a breakout, not a release, so its cumulative downloads miss the installed base "
-                 "from before day 0 and DAU / cumulative downloads exceeds 100%."),
             ],
             dedupe="Summed per app and day.",
             measure="DOWNLOADS = estimated first-time US downloads; CUM_DOWNLOADS = running total from day 0; "
@@ -846,10 +861,144 @@ SECTIONS: list[dict] = [
                 "as missing.",
         ),
     ),
+    dict(
+        key="time_spent",
+        title="Engagement: time spent, US, by day since launch and over the last 90 days (SensorTower)",
+        keys=None, measures=[], fill_zero=False,
+        # Two views of the same apps (BENCH_WINDOW): 'launch' by DAY_N from each app's day 0, and 'recent' by DATE over
+        # the RECENT_DAYS ending on the latest day with minutes. The *_TR7D ratios divide 7-day sums, using only
+        # the days in the window where both the numerator and the denominator are present.
+        sql="""
+            WITH b AS (
+                SELECT app, bench_window, date, sessions, minutes, dau
+                FROM srs_mcp.meta.muse_benchmark
+                WHERE app <> 'Clubhouse'
+                  AND NOT (app = 'Muse' AND date < '""" + LAUNCH + """')   -- Muse day 0 = public launch
+            ), r AS (
+                SELECT MAX(date) AS through FROM b WHERE bench_window = 'recent' AND minutes IS NOT NULL
+            ), w AS (
+                SELECT b.*,
+                       CASE WHEN sessions IS NOT NULL AND minutes IS NOT NULL THEN minutes END AS min_s,
+                       CASE WHEN sessions IS NOT NULL AND minutes IS NOT NULL THEN sessions END AS ses_s,
+                       CASE WHEN dau IS NOT NULL AND minutes IS NOT NULL THEN minutes END AS min_d,
+                       CASE WHEN dau IS NOT NULL AND minutes IS NOT NULL THEN dau END AS dau_d,
+                       CASE WHEN sessions IS NOT NULL AND dau IS NOT NULL THEN sessions END AS ses_p,
+                       CASE WHEN sessions IS NOT NULL AND dau IS NOT NULL THEN dau END AS dau_p
+                FROM b
+            ), t AS (
+                SELECT app, bench_window, date,
+                       DATEDIFF('day', MIN(date) OVER (PARTITION BY app, bench_window), date) AS day_n,
+                       sessions, minutes, dau, min_s, ses_s, min_d, dau_d, ses_p, dau_p,
+                       -- TR7D stops at the last day with minutes rather than trailing on through the lag
+                       MAX(CASE WHEN minutes IS NOT NULL THEN date END) OVER (PARTITION BY app, bench_window) AS last_min,
+                       SUM(min_s) OVER (PARTITION BY app, bench_window ORDER BY date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS min_s7,
+                       SUM(ses_s) OVER (PARTITION BY app, bench_window ORDER BY date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS ses_s7,
+                       SUM(min_d) OVER (PARTITION BY app, bench_window ORDER BY date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS min_d7,
+                       SUM(dau_d) OVER (PARTITION BY app, bench_window ORDER BY date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS dau_d7,
+                       SUM(ses_p) OVER (PARTITION BY app, bench_window ORDER BY date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS ses_p7,
+                       SUM(dau_p) OVER (PARTITION BY app, bench_window ORDER BY date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS dau_p7
+                FROM w
+            )
+            SELECT t.app AS APP, t.bench_window AS BENCH_WINDOW, CAST(t.date AS VARCHAR) AS DATE, t.day_n AS DAY_N,
+                   t.sessions AS SESSIONS, t.minutes AS MINUTES, t.dau AS DAU,
+                   ROUND(1.0 * t.min_s / t.ses_s, 2) AS MIN_PER_SESSION,
+                   CASE WHEN t.date <= t.last_min THEN ROUND(1.0 * t.min_s7 / t.ses_s7, 2) END AS MIN_PER_SESSION_TR7D,
+                   ROUND(1.0 * t.min_d / t.dau_d, 2) AS MIN_PER_DAU,
+                   CASE WHEN t.date <= t.last_min THEN ROUND(1.0 * t.min_d7 / t.dau_d7, 2) END AS MIN_PER_DAU_TR7D,
+                   ROUND(1.0 * t.ses_p / t.dau_p, 2) AS SESSIONS_PER_DAU,
+                   CASE WHEN t.date <= t.last_min THEN ROUND(1.0 * t.ses_p7 / t.dau_p7, 2) END AS SESSIONS_PER_DAU_TR7D
+            FROM t CROSS JOIN r
+            WHERE t.bench_window = 'launch'
+               OR (t.date > r.through - """ + str(RECENT_DAYS) + """ AND t.date <= r.through)
+            ORDER BY 2, 1, 3
+        """,
+        methodology=dict(
+            source="SensorTower SENSORTOWER.COMMON.CORE (sessions and minutes from SensorTower's cross-platform "
+                   "daily session estimates), for the launch benchmark apps: " + ", ".join(BENCHMARK_KEYS) + ".",
+            filters=[
+                ("Same apps, keys, US scope and day 0 as the launch benchmark (Muse day 0 = " + LAUNCH + ")",
+                 "So the time-spent view lines up with the benchmark above it."),
+                ("Clubhouse not shown",
+                 "Clubhouse is not in SensorTower CORE yet, so it has no session or time-spent data here."),
+                ("Sora in Days since launch only",
+                 "CORE has no Sora rows after 2026-03-24 (checked 2026-10-12), so it has no last-90-days data."),
+                (f"Days since launch: day 0 to {BENCHMARK_DAYS}. Last {RECENT_DAYS} days: the {RECENT_DAYS} calendar "
+                 "days ending on the latest day with minutes",
+                 "The first compares each app's launch period; the second compares the apps as they are today."),
+                ("Zero sessions, minutes or DAU = missing",
+                 "SensorTower's latest days arrive as 0 before they are filled in, so a zero is not a real value."),
+            ],
+            dedupe="iPhone and Android phone summed per app and day.",
+            measure="SESSIONS_PER_DAU = sessions / DAU: how many times an average daily user opens the app (a "
+                    "session is each time the app is opened). "
+                    "MIN_PER_SESSION = minutes / sessions: the average session length. MIN_PER_DAU = minutes / "
+                    "DAU: average daily time per active user, which also reflects how often users open the app. "
+                    "The *_TR7D ratios are 7-day sums over 7-day sums (minutes over sessions or DAU, sessions over DAU), not means of "
+                    "daily ratios, over the days in the window where both values are present; early days since "
+                    "launch use fewer than 7 days. Modelled vendor estimates, best read as trends.",
+            lag="Sessions and minutes arrive about a week after DAU (on 2026-10-12 they ran to 10-03, DAU to "
+                "10-09), so the last 90 days end earlier than the DAU charts. The TR7D line stops at each app's "
+                "last day with minutes.",
+        ),
+    ),
+    dict(
+        key="web_time_spent",
+        title="Engagement: web minutes per visit, US (SimilarWeb)",
+        keys=None, measures=[], fill_zero=False,
+        # The TR7D ratio divides 7-day sums (time spent over visits), using only days with both, and stops at
+        # each site's last day with time spent. A site with no time spent yet has no rows with a ratio, and the
+        # page leaves it off the chart.
+        sql="""
+            WITH w AS (
+                SELECT CASE domain
+                           WHEN 'muse.ai' THEN 'Muse'
+                           WHEN 'chatgpt.com' THEN 'ChatGPT'
+                           WHEN 'claude.ai' THEN 'Claude'
+                       END AS app,
+                       domain, date, visits, time_spent,
+                       CASE WHEN visits > 0 AND time_spent IS NOT NULL THEN time_spent END AS ts_v,
+                       CASE WHEN visits > 0 AND time_spent IS NOT NULL THEN visits END AS vis_v
+                FROM srs_mcp.meta.muse_web_traffic
+                WHERE country = 'US'
+                  AND date >= '{card_start}'
+                  AND NOT (domain = 'muse.ai' AND date < '""" + LAUNCH + """')   -- Muse starts at public launch
+            ), t AS (
+                SELECT w.*,
+                       MAX(CASE WHEN ts_v IS NOT NULL THEN date END) OVER (PARTITION BY app) AS last_ts,
+                       SUM(ts_v) OVER (PARTITION BY app ORDER BY date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS ts7,
+                       SUM(vis_v) OVER (PARTITION BY app ORDER BY date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS vis7
+                FROM w
+            )
+            SELECT app AS APP, domain AS DOMAIN, CAST(date AS VARCHAR) AS DATE,
+                   ROUND(visits, 0) AS VISITS, ROUND(time_spent, 0) AS TIME_SPENT,
+                   ROUND(1.0 * ts_v / vis_v, 2) AS MIN_PER_VISIT,
+                   CASE WHEN date <= last_ts THEN ROUND(1.0 * ts7 / NULLIF(vis7, 0), 2) END AS MIN_PER_VISIT_TR7D
+            FROM t
+            ORDER BY 1, 3
+        """,
+        methodology=dict(
+            source="SimilarWeb SIMILARWEB.COMMON.VISITS_V2 (the SimilarWeb pipeline's consumer table): "
+                   "all_traffic_time_spent (total minutes = visits x average visit duration) and all_traffic_visits.",
+            filters=[
+                ("Domains muse.ai, chatgpt.com and claude.ai; desktop plus mobile web, subdomains included",
+                 "Muse's web app against the two assistants in the app benchmark. chatgpt.com includes "
+                 "chat.openai.com, which the pipeline sums into it."),
+                ("US only", "Same scope as the app time-spent chart."),
+                (f"Muse from {LAUNCH} (public launch)", "Pre-launch muse.ai traffic is not Muse usage."),
+            ],
+            dedupe="One value per site and day.",
+            measure="MIN_PER_VISIT = time spent / visits: the average visit length in minutes. MIN_PER_VISIT_TR7D = "
+                    "7-day time spent over 7-day visits (weighted by visits, not a mean of daily averages), over the "
+                    "days with both. A SimilarWeb visit lasts until 30 minutes idle, while an app session is each "
+                    "time the app is opened, so compare sites with each other, not with the app chart. Modelled "
+                    "vendor estimates, best read as trends.",
+            lag="Vendor series, about T-3. The TR7D line stops at each site's last day with time spent.",
+        ),
+    ),
 ]
 
 # Methodology order follows the page.
-_PAGE_ORDER = ["launch_benchmark", "app_usage_daily", "ad_spend_daily", "web_traffic_daily", "muse_web_daily",
+_PAGE_ORDER = ["launch_benchmark", "time_spent", "web_time_spent", "app_usage_daily", "ad_spend_daily", "web_traffic_daily", "muse_web_daily",
                "muse_inapp_daily", "inapp_flows_daily", "web_flows_daily", "agentic_daily", "agentic_merchants",
                "agentic_samples"]
 SECTIONS.sort(key=lambda s: _PAGE_ORDER.index(s["key"]))

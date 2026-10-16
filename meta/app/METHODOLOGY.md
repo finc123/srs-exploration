@@ -8,30 +8,70 @@ Muse launched on 2026-09-08. Card and e-receipt windows start 2026-08-01 to give
 
 **Why two sources for subscriptions?** They see different halves of the market: card panels see web sign-ups billed directly by Meta (`METAPAY META.COM`), but Apple card descriptors carry no app name. E-receipts see App Store and Google Play subscriptions by name, but Meta's own web billing sends no receipt the panel captures. Neither is double-counted against the other.
 
-Complete-through dates for this build: cards 2026-10-04, e-receipts 2026-10-08.
+Complete-through dates for this build: cards 2026-10-10, e-receipts 2026-10-13.
 
 ## Launch benchmark: US downloads and DAU by day since launch (SensorTower)
 
 `sections.launch_benchmark`
 
-**Source.** SensorTower SENSORTOWER.COMMON.CORE for Muse, Sora, Threads, ChatGPT and Claude; Clubhouse from a SensorTower portal export (it is not in CORE).
+**Source.** SensorTower SENSORTOWER.COMMON.CORE for Muse, Sora, Threads, ChatGPT and Claude. Clubhouse will be added once it is in CORE.
 
 **Filters.**
 
 | Rule | Why |
 |---|---|
 | Unified product keys: Muse 6aa0b99dd70c1a09e42dc613, Sora 68dc489f4e04a24f7d0d0aeb, Threads 64a72c98ad4adb0e06dbc506, ChatGPT 64665f59b3ae2712001279ed, Claude 663279a2b3ae277df21f2bd0 | Matched by key, never by name (clones share names). |
-| US only; iPhone + Android phone | The export for Clubhouse is summed the same way (iPad excluded). |
+| US only; iPhone + Android phone | iPad excluded, as in every SensorTower section. |
 | Day 0 = first day with downloads; window day 0 to 120 | Each app's CORE history starts on its launch day. |
-| Clubhouse day 0 = 2020-12-15 | Its viral breakout, the first day of the sustained jump in US downloads, rather than its invite-only iOS release in spring 2020. |
 | Muse day 0 = 2026-09-08 (public launch) | SensorTower's first Muse day, 2026-09-07, is a partial pre-launch day (about 8k US downloads against about 115k on launch day), so day 0 is the first full day. Those ~8k downloads are left out of Muse's cumulative total, which understates it by under 1% after the first week. |
-| Retention proxy: Clubhouse not shown | Its day 0 is a breakout, not a release, so its cumulative downloads miss the installed base from before day 0 and DAU / cumulative downloads exceeds 100%. |
 
 **Deduplication.** Summed per app and day.
 
 **Measure.** DOWNLOADS = estimated first-time US downloads; CUM_DOWNLOADS = running total from day 0; DOWNLOADS_TR7D = mean of the last 7 days. DAU = estimated US daily active users that day. RETENTION = DAU / CUM_DOWNLOADS on the same day: a proxy for the share of everyone who has downloaded the app who is still using it daily. It is not cohort retention (re-installs and multi-device users blur it) and is best compared across apps at the same day since launch. Muse has fewer days than the others.
 
 **Lag.** Downloads run to about T-2 and DAU to about T-3; the latest DAU day arrives as 0 and is treated as missing.
+
+## Engagement: time spent, US, by day since launch and over the last 90 days (SensorTower)
+
+`sections.time_spent`
+
+**Source.** SensorTower SENSORTOWER.COMMON.CORE (sessions and minutes from SensorTower's cross-platform daily session estimates), for the launch benchmark apps: Muse, Sora, Threads, ChatGPT, Claude.
+
+**Filters.**
+
+| Rule | Why |
+|---|---|
+| Same apps, keys, US scope and day 0 as the launch benchmark (Muse day 0 = 2026-09-08) | So the time-spent view lines up with the benchmark above it. |
+| Clubhouse not shown | Clubhouse is not in SensorTower CORE yet, so it has no session or time-spent data here. |
+| Sora in Days since launch only | CORE has no Sora rows after 2026-03-24 (checked 2026-10-12), so it has no last-90-days data. |
+| Days since launch: day 0 to 120. Last 90 days: the 90 calendar days ending on the latest day with minutes | The first compares each app's launch period; the second compares the apps as they are today. |
+| Zero sessions, minutes or DAU = missing | SensorTower's latest days arrive as 0 before they are filled in, so a zero is not a real value. |
+
+**Deduplication.** iPhone and Android phone summed per app and day.
+
+**Measure.** SESSIONS_PER_DAU = sessions / DAU: how many times an average daily user opens the app (a session is each time the app is opened). MIN_PER_SESSION = minutes / sessions: the average session length. MIN_PER_DAU = minutes / DAU: average daily time per active user, which also reflects how often users open the app. The *_TR7D ratios are 7-day sums over 7-day sums (minutes over sessions or DAU, sessions over DAU), not means of daily ratios, over the days in the window where both values are present; early days since launch use fewer than 7 days. Modelled vendor estimates, best read as trends.
+
+**Lag.** Sessions and minutes arrive about a week after DAU (on 2026-10-12 they ran to 10-03, DAU to 10-09), so the last 90 days end earlier than the DAU charts. The TR7D line stops at each app's last day with minutes.
+
+## Engagement: web minutes per visit, US (SimilarWeb)
+
+`sections.web_time_spent`
+
+**Source.** SimilarWeb SIMILARWEB.COMMON.VISITS_V2 (the SimilarWeb pipeline's consumer table): all_traffic_time_spent (total minutes = visits x average visit duration) and all_traffic_visits.
+
+**Filters.**
+
+| Rule | Why |
+|---|---|
+| Domains muse.ai, chatgpt.com and claude.ai; desktop plus mobile web, subdomains included | Muse's web app against the two assistants in the app benchmark. chatgpt.com includes chat.openai.com, which the pipeline sums into it. |
+| US only | Same scope as the app time-spent chart. |
+| Muse from 2026-09-08 (public launch) | Pre-launch muse.ai traffic is not Muse usage. |
+
+**Deduplication.** One value per site and day.
+
+**Measure.** MIN_PER_VISIT = time spent / visits: the average visit length in minutes. MIN_PER_VISIT_TR7D = 7-day time spent over 7-day visits (weighted by visits, not a mean of daily averages), over the days with both. A SimilarWeb visit lasts until 30 minutes idle, while an app session is each time the app is opened, so compare sites with each other, not with the app chart. Modelled vendor estimates, best read as trends.
+
+**Lag.** Vendor series, about T-3. The TR7D line stops at each site's last day with time spent.
 
 ## AI assistant app downloads and DAU (SensorTower)
 
@@ -77,7 +117,7 @@ Complete-through dates for this build: cards 2026-10-04, e-receipts 2026-10-08.
 
 `sections.web_traffic_daily`
 
-**Source.** SimilarWeb daily visits, SIMILARWEB.SNOWFLAKE_INTEGRATION.DOWNSTREAM_DAILY (metric ALL_TRAFFIC_VISITS).
+**Source.** SimilarWeb daily visits, SIMILARWEB.COMMON.VISITS_V2 (the SimilarWeb pipeline's consumer table; metric all_traffic_visits).
 
 **Filters.**
 
@@ -117,13 +157,13 @@ Complete-through dates for this build: cards 2026-10-04, e-receipts 2026-10-08.
 
 `sections.muse_inapp_daily`
 
-**Source.** NIQ e-receipts, SHARE_NIQ.SRS.ITEMS_EXTENDED (one row per receipt line item), joined to SHARE_NIQ.SRS.MAILBOXES_ENHANCED for mailbox status.
+**Source.** NIQ e-receipts, SRS_SLICE.COMMON.ITEMS_LIVE (the processed NIQ line-item table, one row per receipt line item, with mailbox status), via the SRS_MCP.META.MUSE_NIQ_RECEIPTS view.
 
 **Filters.**
 
 | Rule | Why |
 |---|---|
-| Active mailboxes only (MAILBOXES_ENHANCED.status = 'active') | Inactive mailboxes have disconnected or stopped syncing, so their receipt history stops. Keeping them would mix panel churn into the trend; this is the SRS convention for NIQ (e.g. the Roblox bookings slice). It removes 11 of 275 Muse mailboxes as of 2026-10-07. |
+| Active mailboxes only (mailbox_status = 'active') | Inactive mailboxes have disconnected or stopped syncing, so their receipt history stops. Keeping them would mix panel churn into the trend; this is the SRS convention for NIQ (e.g. the Roblox bookings slice). It removes 11 of 275 Muse mailboxes as of 2026-10-07. |
 | Description contains 'Muse from Meta' | The App Store / Google Play receipt names the subscription. 'Muse' alone also matches other apps and museums; the pre-launch 'Meta One' Core / Premium plans are a different product. |
 | Merchant iTunes* -> Apple, Google Play* -> Google Play; other merchants dropped | In-app subscriptions are billed by the store. No direct-from-Meta Muse receipts exist (Meta receipts near $16 are Quest games and Instagram boosts), so web Muse is measured on cards. |
 | Plan from the description: 'power' -> Power, 'max' -> Max, else Other | In-app list prices are $20 (Power) and $100 (Max); the plan name is more reliable than the amount, which varies with tax and occasional $28 regional prices. |
@@ -133,7 +173,7 @@ Complete-through dates for this build: cards 2026-10-04, e-receipts 2026-10-08.
 
 **Measure.** CHARGES = mailboxes with a paid Muse receipt that day; CANCELS = cancellation notices; TRIALS = trial-start receipts.
 
-**Lag.** Complete through run date minus 1 day.
+**Lag.** Complete through run date minus 2 day.
 
 ## Muse in-app subscriber flows (e-receipts)
 
@@ -153,7 +193,7 @@ Complete-through dates for this build: cards 2026-10-04, e-receipts 2026-10-08.
 
 **Measure.** GROSS_ADDS = new paying mailboxes that day. CANCELS = cancellation notices. NET_ADDS = GROSS_ADDS - CANCELS. A plan switch counts as a gross add on the new plan. Whether Google Play and Apple both send a receipt for every renewal is under investigation, so renewals are not shown here.
 
-**Lag.** Complete through run date minus 1 day.
+**Lag.** Complete through run date minus 2 day.
 
 ## Muse web subscriber flows (card panels)
 

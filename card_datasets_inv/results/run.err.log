@@ -1,0 +1,176 @@
+[NbConvertApp] Converting notebook card_datasets_inventory.ipynb to notebook
+C:\Users\fintan.creedon\code\exploration\.venv\Lib\site-packages\zmq\_future.py:718: RuntimeWarning: Proactor event loop does not implement add_reader family of methods required for zmq. Registering an additional selector thread for add_reader support via tornado. Use `asyncio.set_event_loop_policy(WindowsSelectorEventLoopPolicy())` to avoid this warning.
+  self._get_loop()
+[IPKernelApp] WARNING | Kernel is running over TCP without encryption. All communication (including code and outputs) is sent in plain text and is susceptible to eavesdropping. Use IPC transport or launch with kernel manager-provisioned CurveZMQ keys to enable transport encryption.
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\fintan.creedon\code\exploration\.venv\Scripts\jupyter-nbconvert.EXE\__main__.py", line 10, in <module>
+  File "C:\Users\fintan.creedon\code\exploration\.venv\Lib\site-packages\jupyter_core\application.py", line 284, in launch_instance
+    super().launch_instance(argv=argv, **kwargs)
+  File "C:\Users\fintan.creedon\code\exploration\.venv\Lib\site-packages\traitlets\config\application.py", line 1080, in launch_instance
+    app.start()
+  File "C:\Users\fintan.creedon\code\exploration\.venv\Lib\site-packages\nbconvert\nbconvertapp.py", line 420, in start
+    self.convert_notebooks()
+  File "C:\Users\fintan.creedon\code\exploration\.venv\Lib\site-packages\nbconvert\nbconvertapp.py", line 597, in convert_notebooks
+    self.convert_single_notebook(notebook_filename)
+  File "C:\Users\fintan.creedon\code\exploration\.venv\Lib\site-packages\nbconvert\nbconvertapp.py", line 563, in convert_single_notebook
+    output, resources = self.export_single_notebook(
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\fintan.creedon\code\exploration\.venv\Lib\site-packages\nbconvert\nbconvertapp.py", line 487, in export_single_notebook
+    output, resources = self.exporter.from_filename(
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\fintan.creedon\code\exploration\.venv\Lib\site-packages\nbconvert\exporters\exporter.py", line 201, in from_filename
+    return self.from_file(f, resources=resources, **kw)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\fintan.creedon\code\exploration\.venv\Lib\site-packages\nbconvert\exporters\exporter.py", line 220, in from_file
+    return self.from_notebook_node(
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\fintan.creedon\code\exploration\.venv\Lib\site-packages\nbconvert\exporters\notebook.py", line 36, in from_notebook_node
+    nb_copy, resources = super().from_notebook_node(nb, resources, **kw)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\fintan.creedon\code\exploration\.venv\Lib\site-packages\nbconvert\exporters\exporter.py", line 154, in from_notebook_node
+    nb_copy, resources = self._preprocess(nb_copy, resources)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\fintan.creedon\code\exploration\.venv\Lib\site-packages\nbconvert\exporters\exporter.py", line 353, in _preprocess
+    nbc, resc = preprocessor(nbc, resc)
+                ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\fintan.creedon\code\exploration\.venv\Lib\site-packages\nbconvert\preprocessors\base.py", line 48, in __call__
+    return self.preprocess(nb, resources)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\fintan.creedon\code\exploration\.venv\Lib\site-packages\nbconvert\preprocessors\execute.py", line 103, in preprocess
+    self.preprocess_cell(cell, resources, index)
+  File "C:\Users\fintan.creedon\code\exploration\.venv\Lib\site-packages\nbconvert\preprocessors\execute.py", line 124, in preprocess_cell
+    cell = self.execute_cell(cell, index, store_history=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\fintan.creedon\code\exploration\.venv\Lib\site-packages\jupyter_core\utils\__init__.py", line 165, in wrapped
+    return loop.run_until_complete(inner)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\fintan.creedon\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\fintan.creedon\code\exploration\.venv\Lib\site-packages\nbclient\client.py", line 1062, in async_execute_cell
+    await self._check_raise_for_error(cell, cell_index, exec_reply)
+  File "C:\Users\fintan.creedon\code\exploration\.venv\Lib\site-packages\nbclient\client.py", line 918, in _check_raise_for_error
+    raise CellExecutionError.from_cell_and_msg(cell, exec_reply_content)
+nbclient.exceptions.CellExecutionError: An error occurred while executing the following cell:
+------------------
+probes = pd.read_csv(PROBE_CSV).sort_values("run_at").drop_duplicates(["fq", "kind"], keep="last")
+p = probes.pivot(index="fq", columns="kind", values=["status", "v1", "v2"])
+p.columns = [f"{a}_{b}" for a, b in p.columns]
+p = p.rename(columns={"v1_minmax": "data_from", "v2_minmax": "data_to", "v1_dec25": "dec25_distinct_txns",
+                      "v2_dec25": "dec25_rows", "status_minmax": "minmax_status", "status_dec25": "dec25_status"})
+for c in ["data_from", "data_to", "dec25_distinct_txns", "dec25_rows", "minmax_status", "dec25_status"]:
+    if c not in p:
+        p[c] = None
+
+inv = objs.copy()
+inv["probe_source"] = inv.mirror_of.fillna(inv.fq)
+inv = inv.merge(p, left_on="probe_source", right_index=True, how="left")
+inv = inv.merge(dbs[["name", "provider"]], left_on="table_catalog", right_on="name", how="left").drop(columns="name")
+inv["data_from"] = pd.to_datetime(inv.data_from).dt.date
+inv["data_to"] = pd.to_datetime(inv.data_to).dt.date
+inv["days_stale"] = (pd.Timestamp(TODAY) - pd.to_datetime(inv.data_to)).dt.days
+inv["dec25_distinct_txns"] = pd.to_numeric(inv.dec25_distinct_txns)
+inv["dec25_rows"] = pd.to_numeric(inv.dec25_rows)
+inv["gb"] = (inv.bytes / 1e9).round(1)
+
+OUT_COLS = ["provider", "table_catalog", "table_schema", "table_name", "table_type", "grain", "variant", "readable", "mirror_of",
+            "has_txn_description", "txn_description_col", "main_date_col", "data_from", "data_to", "days_stale",
+            "dec25_distinct_txns", "dec25_rows", "txn_id_col", "row_count", "gb", "created", "last_altered",
+            "clustering_key", "minmax_status", "dec25_status"]
+inv = inv[OUT_COLS].sort_values(["provider", "table_catalog", "table_schema", "table_name"]).reset_index(drop=True)
+inv.to_csv(os.path.join(RES, "inventory.csv"), index=False)
+
+# Excel copy for browsing (timezones stripped; Excel cannot store them)
+xl = inv.copy()
+for c in ["created", "last_altered"]:
+    xl[c] = pd.to_datetime(xl[c], utc=True).dt.tz_localize(None)
+with pd.ExcelWriter(os.path.join(RES, "inventory.xlsx")) as w:
+    xl[xl.grain == "row-level"].to_excel(w, sheet_name="row_level", index=False)
+    xl.to_excel(w, sheet_name="all_objects", index=False)
+    dbs.assign(created_on=pd.to_datetime(dbs.created_on, utc=True).dt.tz_localize(None)).to_excel(w, sheet_name="databases", index=False)
+print(inv.minmax_status.value_counts(dropna=False), inv.dec25_status.value_counts(dropna=False), sep="\n\n")
+------------------
+
+
+[31m---------------------------------------------------------------------------[39m
+[31mTypeError[39m                                 Traceback (most recent call last)
+[36mFile [39m[32m~\code\exploration\.venv\Lib\site-packages\pandas\core\ops\array_ops.py:218[39m, in [36m_na_arithmetic_op[39m[34m(left, right, op, is_cmp)[39m
+[32m    217[39m [38;5;28;01mtry[39;00m:
+[32m--> [39m[32m218[39m     result = [30;43mfunc[39;49m[30;43m([39;49m[30;43mleft[39;49m[30;43m,[39;49m[30;43m [39;49m[30;43mright[39;49m[30;43m)[39;49m
+[32m    219[39m [38;5;28;01mexcept[39;00m [38;5;167;01mTypeError[39;00m:
+
+[36mFile [39m[32m~\code\exploration\.venv\Lib\site-packages\pandas\core\computation\expressions.py:242[39m, in [36mevaluate[39m[34m(op, a, b, use_numexpr)[39m
+[32m    240[39m     [38;5;28;01mif[39;00m use_numexpr:
+[32m    241[39m         [38;5;66;03m# error: "None" not callable[39;00m
+[32m--> [39m[32m242[39m         [38;5;28;01mreturn[39;00m [30;43m_evaluate[39;49m[30;43m([39;49m[30;43mop[39;49m[30;43m,[39;49m[30;43m [39;49m[30;43mop_str[39;49m[30;43m,[39;49m[30;43m [39;49m[30;43ma[39;49m[30;43m,[39;49m[30;43m [39;49m[30;43mb[39;49m[30;43m)[39;49m  [38;5;66;03m# type: ignore[misc][39;00m
+[32m    243[39m [38;5;28;01mreturn[39;00m _evaluate_standard(op, op_str, a, b)
+
+[36mFile [39m[32m~\code\exploration\.venv\Lib\site-packages\pandas\core\computation\expressions.py:73[39m, in [36m_evaluate_standard[39m[34m(op, op_str, a, b)[39m
+[32m     72[39m     _store_test_result([38;5;28;01mFalse[39;00m)
+[32m---> [39m[32m73[39m [38;5;28;01mreturn[39;00m [30;43mop[39;49m[30;43m([39;49m[30;43ma[39;49m[30;43m,[39;49m[30;43m [39;49m[30;43mb[39;49m[30;43m)[39;49m
+
+[31mTypeError[39m: unsupported operand type(s) for /: 'decimal.Decimal' and 'float'
+
+During handling of the above exception, another exception occurred:
+
+[31mTypeError[39m                                 Traceback (most recent call last)
+[36mCell[39m[36m [39m[32mIn[6][39m[32m, line 19[39m
+[32m     15[39m inv[[33m"data_to"[39m] = pd.to_datetime(inv.data_to).dt.date
+[32m     16[39m inv[[33m"days_stale"[39m] = (pd.Timestamp(TODAY) - pd.to_datetime(inv.data_to)).dt.days
+[32m     17[39m inv[[33m"dec25_distinct_txns"[39m] = pd.to_numeric(inv.dec25_distinct_txns)
+[32m     18[39m inv[[33m"dec25_rows"[39m] = pd.to_numeric(inv.dec25_rows)
+[32m---> [39m[32m19[39m inv[[33m"gb"[39m] = (inv.bytes / [32m1e9[39m).round([32m1[39m)
+[32m     20[39m 
+[32m     21[39m OUT_COLS = ["provider", "table_catalog", "table_schema", "table_name", "table_type", "grain", "variant", "readable", "mirror_of",
+[32m     22[39m             [33m"has_txn_description"[39m, [33m"txn_description_col"[39m, [33m"main_date_col"[39m, [33m"data_from"[39m, [33m"data_to"[39m, [33m"days_stale"[39m,
+
+[36mFile [39m[32m~\code\exploration\.venv\Lib\site-packages\pandas\core\ops\common.py:76[39m, in [36m_unpack_zerodim_and_defer.<locals>.new_method[39m[34m(self, other)[39m
+[32m     72[39m             [38;5;28;01mreturn[39;00m [38;5;28mNotImplemented[39m
+[32m     74[39m other = item_from_zerodim(other)
+[32m---> [39m[32m76[39m [38;5;28;01mreturn[39;00m [30;43mmethod[39;49m[30;43m([39;49m[30;43mself[39;49m[30;43m,[39;49m[30;43m [39;49m[30;43mother[39;49m[30;43m)[39;49m
+
+[36mFile [39m[32m~\code\exploration\.venv\Lib\site-packages\pandas\core\arraylike.py:210[39m, in [36mOpsMixin.__truediv__[39m[34m(self, other)[39m
+[32m    208[39m [38;5;129m@unpack_zerodim_and_defer[39m([33m"[39m[33m__truediv__[39m[33m"[39m)
+[32m    209[39m [38;5;28;01mdef[39;00m[38;5;250m [39m[34m__truediv__[39m([38;5;28mself[39m, other):
+[32m--> [39m[32m210[39m     [38;5;28;01mreturn[39;00m [30;43mself[39;49m[30;43m.[39;49m[30;43m_arith_method[39;49m[30;43m([39;49m[30;43mother[39;49m[30;43m,[39;49m[30;43m [39;49m[30;43moperator[39;49m[30;43m.[39;49m[30;43mtruediv[39;49m[30;43m)[39;49m
+
+[36mFile [39m[32m~\code\exploration\.venv\Lib\site-packages\pandas\core\series.py:6154[39m, in [36mSeries._arith_method[39m[34m(self, other, op)[39m
+[32m   6152[39m [38;5;28;01mdef[39;00m[38;5;250m [39m[34m_arith_method[39m([38;5;28mself[39m, other, op):
+[32m   6153[39m     [38;5;28mself[39m, other = [38;5;28mself[39m._align_for_op(other)
+[32m-> [39m[32m6154[39m     [38;5;28;01mreturn[39;00m [30;43mbase[39;49m[30;43m.[39;49m[30;43mIndexOpsMixin[39;49m[30;43m.[39;49m[30;43m_arith_method[39;49m[30;43m([39;49m[30;43mself[39;49m[30;43m,[39;49m[30;43m [39;49m[30;43mother[39;49m[30;43m,[39;49m[30;43m [39;49m[30;43mop[39;49m[30;43m)[39;49m
+
+[36mFile [39m[32m~\code\exploration\.venv\Lib\site-packages\pandas\core\base.py:1391[39m, in [36mIndexOpsMixin._arith_method[39m[34m(self, other, op)[39m
+[32m   1388[39m     rvalues = np.arange(rvalues.start, rvalues.stop, rvalues.step)
+[32m   1390[39m [38;5;28;01mwith[39;00m np.errstate([38;5;28mall[39m=[33m"[39m[33mignore[39m[33m"[39m):
+[32m-> [39m[32m1391[39m     result = [30;43mops[39;49m[30;43m.[39;49m[30;43marithmetic_op[39;49m[30;43m([39;49m[30;43mlvalues[39;49m[30;43m,[39;49m[30;43m [39;49m[30;43mrvalues[39;49m[30;43m,[39;49m[30;43m [39;49m[30;43mop[39;49m[30;43m)[39;49m
+[32m   1393[39m [38;5;28;01mreturn[39;00m [38;5;28mself[39m._construct_result(result, name=res_name)
+
+[36mFile [39m[32m~\code\exploration\.venv\Lib\site-packages\pandas\core\ops\array_ops.py:283[39m, in [36marithmetic_op[39m[34m(left, right, op)[39m
+[32m    279[39m     _bool_arith_check(op, left, right)  [38;5;66;03m# type: ignore[arg-type][39;00m
+[32m    281[39m     [38;5;66;03m# error: Argument 1 to "_na_arithmetic_op" has incompatible type[39;00m
+[32m    282[39m     [38;5;66;03m# "Union[ExtensionArray, ndarray[Any, Any]]"; expected "ndarray[Any, Any]"[39;00m
+[32m--> [39m[32m283[39m     res_values = [30;43m_na_arithmetic_op[39;49m[30;43m([39;49m[30;43mleft[39;49m[30;43m,[39;49m[30;43m [39;49m[30;43mright[39;49m[30;43m,[39;49m[30;43m [39;49m[30;43mop[39;49m[30;43m)[39;49m  [38;5;66;03m# type: ignore[arg-type][39;00m
+[32m    285[39m [38;5;28;01mreturn[39;00m res_values
+
+[36mFile [39m[32m~\code\exploration\.venv\Lib\site-packages\pandas\core\ops\array_ops.py:227[39m, in [36m_na_arithmetic_op[39m[34m(left, right, op, is_cmp)[39m
+[32m    219[39m [38;5;28;01mexcept[39;00m [38;5;167;01mTypeError[39;00m:
+[32m    220[39m     [38;5;28;01mif[39;00m [38;5;129;01mnot[39;00m is_cmp [38;5;129;01mand[39;00m (
+[32m    221[39m         left.dtype == [38;5;28mobject[39m [38;5;129;01mor[39;00m [38;5;28mgetattr[39m(right, [33m"[39m[33mdtype[39m[33m"[39m, [38;5;28;01mNone[39;00m) == [38;5;28mobject[39m
+[32m    222[39m     ):
+[32m   (...)[39m[32m    225[39m         [38;5;66;03m# Don't do this for comparisons, as that will handle complex numbers[39;00m
+[32m    226[39m         [38;5;66;03m#  incorrectly, see GH#32047[39;00m
+[32m--> [39m[32m227[39m         result = [30;43m_masked_arith_op[39;49m[30;43m([39;49m[30;43mleft[39;49m[30;43m,[39;49m[30;43m [39;49m[30;43mright[39;49m[30;43m,[39;49m[30;43m [39;49m[30;43mop[39;49m[30;43m)[39;49m
+[32m    228[39m     [38;5;28;01melse[39;00m:
+[32m    229[39m         [38;5;28;01mraise[39;00m
+
+[36mFile [39m[32m~\code\exploration\.venv\Lib\site-packages\pandas\core\ops\array_ops.py:182[39m, in [36m_masked_arith_op[39m[34m(x, y, op)[39m
+[32m    179[39m         mask = np.where(y == [32m1[39m, [38;5;28;01mFalse[39;00m, mask)
+[32m    181[39m     [38;5;28;01mif[39;00m mask.any():
+[32m--> [39m[32m182[39m         result[mask] = [30;43mop[39;49m[30;43m([39;49m[30;43mxrav[39;49m[30;43m[[39;49m[30;43mmask[39;49m[30;43m][39;49m[30;43m,[39;49m[30;43m [39;49m[30;43my[39;49m[30;43m)[39;49m
+[32m    184[39m np.putmask(result, ~mask, np.nan)
+[32m    185[39m result = result.reshape(x.shape)  [38;5;66;03m# 2D compat[39;00m
+
+[31mTypeError[39m: unsupported operand type(s) for /: 'decimal.Decimal' and 'float'
+

@@ -10,7 +10,7 @@ Loads are cached under .cache/ as parquet:
     delete + insert).
   * NIQ and SensorTower once per run date (single small queries).
 
-The sections then run as SQL in DuckDB over tables named srs_slice.meta.*, the
+The sections then run as SQL in DuckDB over tables named srs_mcp.meta.*, the
 same SQL the monorepo exporter will run in Snowflake. The payload envelope
 matches roblox.json: {schema_version, generated_at, freshness, sections}, plus
 `summary` and `methodology`.
@@ -180,52 +180,18 @@ def load_member_panel(card_rows: pd.DataFrame, run_date: date, offline: bool) ->
     return df
 
 
-def load_clubhouse() -> pd.DataFrame | None:
-    """US Clubhouse downloads and DAU from the SensorTower portal export, iPhone + Android (as CORE), day 0 window."""
-    xlsx = HERE / S.BENCHMARK_SNAPSHOT
-    if not xlsx.exists():
-        log(f"benchmark: {xlsx.name} not found, Clubhouse skipped")
-        return None
-    # Reading the workbook takes a minute; cache it keyed on the file's mtime.
-    path = CACHE / "clubhouse" / f"{int(xlsx.stat().st_mtime)}.parquet"
-    if path.exists():
-        return pd.read_parquet(path)
-    sheets = pd.read_excel(xlsx, sheet_name=["Downloads", "DAU"])
-
-    def us_daily(df: pd.DataFrame, col: str) -> pd.Series:
-        df = df[(df["Country / Region"] == "US") & (df["Device"] != "iPad")]
-        return df.groupby(pd.to_datetime(df["Date"]).dt.date)[col].sum(min_count=1).rename(col.lower())
-
-    out = pd.concat([us_daily(sheets["Downloads"], "Downloads"), us_daily(sheets["DAU"], "DAU")], axis=1)
-    day0 = date.fromisoformat(S.BENCHMARK_DAY0["Clubhouse"])
-    out = out.loc[[d for d in out.index if day0 <= d <= day0 + timedelta(days=S.BENCHMARK_DAYS)]]
-    out = out.rename_axis("date").reset_index().assign(app="Clubhouse")[["date", "app", "downloads", "dau"]]
-    path.parent.mkdir(parents=True, exist_ok=True)
-    out.to_parquet(path, index=False)
-    return out
-
-
-def load_benchmark(run_date: date, offline: bool) -> tuple[pd.DataFrame, bool]:
-    core = load_single("benchmark", S.BENCHMARK_SQL, run_date, offline)
-    club = load_clubhouse()
-    if club is None:
-        return core, False
-    core = core.assign(date=pd.to_datetime(core["date"]).dt.date)
-    return pd.concat([core, club], ignore_index=True), True
-
-
 # ---------------------------------------------------------------------------
 # Sections
 # ---------------------------------------------------------------------------
 def to_duckdb(tables: dict[str, tuple[pd.DataFrame, list[str]]]) -> duckdb.DuckDBPyConnection:
     con = duckdb.connect()
-    con.execute("ATTACH ':memory:' AS srs_slice")
-    con.execute("CREATE SCHEMA srs_slice.meta")
+    con.execute("ATTACH ':memory:' AS srs_mcp")
+    con.execute("CREATE SCHEMA srs_mcp.meta")
     for name, (df, date_cols) in tables.items():
         con.register("_df", df)
         # file_date is absent from card days cached before it was added
         casts = ", ".join(f"CAST({c} AS DATE) AS {c}" for c in date_cols if c in df.columns)
-        con.execute(f"CREATE TABLE srs_slice.meta.{name} AS SELECT * REPLACE ({casts}) FROM _df")
+        con.execute(f"CREATE TABLE srs_mcp.meta.{name} AS SELECT * REPLACE ({casts}) FROM _df")
         con.unregister("_df")
     return con
 
@@ -365,7 +331,7 @@ def main() -> None:
     ad_spend = load_single("ad_spend", S.AD_SPEND_SQL, run_date, args.offline)
     web_traffic = load_single("web_traffic", S.WEB_TRAFFIC_SQL, run_date, args.offline)
     web_source = "SimilarWeb"
-    benchmark, has_clubhouse = load_benchmark(run_date, args.offline)
+    benchmark = load_single("benchmark", S.BENCHMARK_SQL, run_date, args.offline)
     if _conn is not None:
         _conn.close()  # explicit close; leaving it to interpreter exit re-triggered the OAuth browser prompt
 
@@ -395,6 +361,7 @@ def main() -> None:
         frames[sec["key"]] = add_derived(df, sec.get("derived", {}))
 
     usage, web, bench = frames["app_usage_daily"], frames["web_traffic_daily"], frames["launch_benchmark"]
+    spent, web_spent = frames["time_spent"], frames["web_time_spent"]
     ad_spend_max = pd.to_datetime(ad_spend["date"]).max().date().isoformat() if len(ad_spend) else None
     freshness = [
         dict(DATASET="Card panels", MAX_DATE=params["card_through"]),
@@ -404,6 +371,8 @@ def main() -> None:
         dict(DATASET="Pathmatics ad spend", MAX_DATE=ad_spend_max),
         dict(DATASET=web_source, MAX_DATE=web.loc[web.VISITS.notna(), "DATE"].max()),
         dict(DATASET="SensorTower benchmark (Muse)", MAX_DATE=bench.loc[bench.APP == "Muse", "DATE"].max()),
+        dict(DATASET="SensorTower time spent", MAX_DATE=spent.loc[spent.MIN_PER_SESSION.notna(), "DATE"].max()),
+        dict(DATASET="SimilarWeb time spent", MAX_DATE=web_spent.loc[web_spent.MIN_PER_VISIT.notna(), "DATE"].max()),
     ]
     payload = dict(
         schema_version=SCHEMA_VERSION,
@@ -412,7 +381,7 @@ def main() -> None:
         card_start=S.CARD_START,
         share_apps=S.SHARE_APPS,
         web_traffic_source=web_source,
-        benchmark_day0=S.BENCHMARK_DAY0 if has_clubhouse else {},
+        benchmark_day0=S.BENCHMARK_DAY0 if (bench.APP == "Clubhouse").any() else {},
         freshness=freshness,
         summary=summary_rows(frames),
         methodology=methodology_payload(),
