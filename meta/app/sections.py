@@ -119,7 +119,28 @@ def _yodlee(feed: int, kind: str) -> dict:
                 txn=f"unique_{kind.lower()}_transaction_id", member="unique_mem_id",
                 prune="panel_file_created_date", max_days=None)
 
-CARD_SOURCES = [_yodlee(f, k) for f in (3, 4, 6) for k in ("CARD", "BANK")]
+YODLEE_SOURCES = [_yodlee(f, k) for f in (3, 4, 6) for k in ("CARD", "BANK")]
+
+# Prime Omega (decided 2026-10-19) is the agentic source. On 2026-09-26..10-09, 97% of Yodlee F3/4/6
+# agentic transactions had an Omega transaction of the same amount within +/-3 days (0% at a 20-day
+# shift), and Omega had 1.45x as many: it is a superset, so it replaces Yodlee rather than adding to it.
+# All of Omega, not the 2022 consistent-shopper panel (~15% of the agentic rows). Descriptors live on
+# MID_V1_0, joined by merchid. TRANS prunes on filedate, which is never before trans_date.
+OMEGA = "SHARE_CE_PRIME_ENRICHED_OMEGA_2822.PRIME_OMEGA"
+SOURCE_OMEGA = dict(
+    name="Prime Omega",
+    table=f"(SELECT t.transid, t.cardlinkid, t.trans_date, t.filedate, t.trans_amount, m.merchdesc "
+          f"FROM {OMEGA}.TRANS_V1_0 t JOIN {OMEGA}.MID_V1_0 m ON m.merchid = t.merchid)",
+    totals_table=f"{OMEGA}.TRANS_V1_0",
+    desc="merchdesc", date="trans_date", amt="trans_amount", txn="transid", member="cardlinkid",
+    prune="filedate", max_days=None, signals=("agentic",))
+
+# Yodlee stays the web Muse source only; Omega carries agentic only.
+for _s in YODLEE_SOURCES:
+    _s["signals"] = ("muse_web",)
+CARD_SOURCES = YODLEE_SOURCES + [SOURCE_OMEGA]
+AGENTIC_SOURCES = [SOURCE_OMEGA]
+AGENTIC_SOURCE_SQL = ", ".join(f"'{s['name']}'" for s in AGENTIC_SOURCES)
 
 # NOT IN v1 (decided 2026-10-07). 279 PRIME_TAU does not overlap Yodlee members,
 # but it is a ~12.5M-transaction/day panel that surfaces only ~3 agentic
@@ -133,16 +154,25 @@ SOURCE_279_PRIME_TAU = dict(
     desc="billing_description", date="transaction_date", amt="transaction_amount",
     txn="earnest_transaction_id", member="member_id", prune=None, max_days=1)
 
-DENOMINATOR_SOURCES = CARD_SOURCES
+# Per-million denominator: the agentic source's own daily volume, so the rate tracks adoption, not panel mix.
+DENOMINATOR_SOURCES = AGENTIC_SOURCES
 
 # ---------------------------------------------------------------------------
 # Matching rules (Snowflake SQL fragments). Backslashes are doubled for the
 # SQL string literal, so '\\*' reaches the regex engine as a literal '*'.
 # ---------------------------------------------------------------------------
+# Non-Stripe billers whose descriptors also contain 'LINK* ' (seen 2026-08-01..10-14; about 1-2 a day).
+AGENTIC_EXCLUDE = ["cash app", "missing link*", "pto link*", "debt-link*", "team link*", "coffee link*",
+                   "visa money"]
+
+
 def agentic_sql(col: str) -> str:
-    """Stripe Link agentic checkout: LINKAGNT* (until 2026-09-23) or LINK* anchored on Stripe's descriptor (from 09-23)."""
-    return (rf"({col} ILIKE '%linkagnt*%' OR (REGEXP_LIKE({col}, '(^|.*[^a-z.])link\\* .*', 'i') "
-            rf"AND ({col} ILIKE '%www.link.co%' OR {col} ILIKE '%south san fra%')))")
+    """Stripe Link agentic checkout: LINKAGNT* (until 2026-09-23) or LINK* <merchant> (from 09-23).
+
+    LINK* needs no Stripe URL/city anchor: Duffel airline bookings ('LINK* DELTA AIR DUFFEL.COM NY')
+    and truncated card descriptors ('LINK* GO PUFF*GB LIC.') carry neither, and are ~15% of the total."""
+    excl = " ".join(f"AND {col} NOT ILIKE '%{e}%'" for e in AGENTIC_EXCLUDE)
+    return (rf"({col} ILIKE '%linkagnt*%' OR (REGEXP_LIKE({col}, '(^|.*[^a-z.])link[*] .*', 'i') {excl}))")
 
 
 def muse_web_sql(col: str, amt: str) -> str:
@@ -176,6 +206,7 @@ def _window(src: dict, start: str, end: str) -> str:
 
 def card_rows_sql(src: dict, start: str, end: str) -> str:
     d, a = src["desc"], src["amt"]
+    match = " OR ".join({"agentic": agentic_sql(d), "muse_web": muse_web_sql(d, a)}[s] for s in src["signals"])
     return f"""
         SELECT '{src['name']}' AS source,
                CAST({src['member']} AS VARCHAR) AS member,
@@ -189,7 +220,7 @@ def card_rows_sql(src: dict, start: str, end: str) -> str:
                IFF({agentic_sql(d)}, {merchant_sql(d)}, NULL) AS merchant
         FROM {src['table']}
         WHERE {_window(src, start, end)}
-          AND ({agentic_sql(d)} OR {muse_web_sql(d, a)})
+          AND ({match})
     """
 
 
@@ -216,7 +247,7 @@ def member_panel_sql(src: dict, members: list[str], end: str) -> str:
 def panel_total_sql(src: dict, start: str, end: str) -> str:
     return f"""
         SELECT '{src['name']}' AS source, {src['date']}::DATE AS day, COUNT(DISTINCT {src['txn']}) AS total_txn
-        FROM {src['table']} WHERE {_window(src, start, end)}
+        FROM {src.get('totals_table', src['table'])} WHERE {_window(src, start, end)}
         GROUP BY 1, 2
     """
 
@@ -588,19 +619,21 @@ SECTIONS: list[dict] = [
     dict(
         key="agentic_daily",
         title="Agentic Checkout to Non-Stripe Merchants",
-        keys=[], measures=["TXNS", "PANEL_TXNS"], fill_zero=True,
+        keys=[], measures=["TXNS", "SPEND", "PANEL_TXNS"], fill_zero=True,
         start="card_start", through="card_through",
         sql="""
             WITH t AS (
-                SELECT day, COUNT(DISTINCT source || '|' || txn_id) AS txns
-                FROM srs_mcp.meta.muse_card_txns
-                WHERE signal = 'agentic'
+                SELECT day, COUNT(*) AS txns, SUM(amount) AS spend
+                FROM (SELECT DISTINCT source, txn_id, day, amount FROM srs_mcp.meta.muse_card_txns
+                      WHERE signal = 'agentic' AND source IN (""" + AGENTIC_SOURCE_SQL + """) AND amount > 0) a
                 GROUP BY day
             ), p AS (
-                SELECT day, SUM(total_txn) AS panel_txns FROM srs_mcp.meta.muse_panel_totals GROUP BY day
+                SELECT day, SUM(total_txn) AS panel_txns FROM srs_mcp.meta.muse_panel_totals
+                WHERE source IN (""" + AGENTIC_SOURCE_SQL + """) GROUP BY day
             )
             SELECT CAST(p.day AS VARCHAR) AS DATE,
                    COALESCE(t.txns, 0) AS TXNS,
+                   COALESCE(t.spend, 0) AS SPEND,
                    p.panel_txns AS PANEL_TXNS
             FROM p LEFT JOIN t ON t.day = p.day
             WHERE p.day BETWEEN '{card_start}' AND '{card_through}'
@@ -609,25 +642,33 @@ SECTIONS: list[dict] = [
         derived={
             "PER_MILLION": ("TXNS", "PANEL_TXNS", 1e6),
             "PER_MILLION_TR7D": ("TXNS_TR7D", "PANEL_TXNS_TR7D", 1e6),
+            "MEAN_SPEND": ("SPEND", "TXNS", 1),
+            "MEAN_SPEND_TR7D": ("SPEND_TR7D", "TXNS_TR7D", 1),
         },
         methodology=dict(
-            source="Same card & bank set as Muse web: Yodlee feeds 3, 4 and 6. Feed 4 bank has had no agentic "
-                   "rows to date. 279 PRIME_TAU is left out of v1: its members do not overlap Yodlee, but it is a "
-                   "~12.5M-transaction/day panel that surfaces only ~3 agentic descriptors a day (about 10% on "
-                   "top of Yodlee), and pooling it would make the per-million rate track 279's panel size rather "
-                   "than agentic adoption.",
+            source="Prime Omega (SHARE_CE_PRIME_ENRICHED_OMEGA_2822.PRIME_OMEGA TRANS_V1_0 joined to MID_V1_0 for "
+                   "the descriptor), all cardlinks rather than the 2022 consistent-shopper panel, which holds only "
+                   "~15% of agentic rows. Omega replaced Yodlee feeds 3/4/6 on 2026-10-19: it is a superset (97% of "
+                   "Yodlee agentic transactions have an Omega transaction of the same amount within 3 days) with "
+                   "1.45x the agentic volume. Web Muse stays on Yodlee.",
             filters=[
                 ("Description contains LINKAGNT*",
                  "Stripe Link's agent-wallet descriptor ('LINKAGNT* <merchant> WWW.LINK.COM CA'), used until "
                  "2026-09-23."),
-                ("Or LINK* followed by a space, anchored on WWW.LINK.CO or SOUTH SAN FRA",
-                 "From 09-23/24 Stripe shortened the descriptor to 'LINK* <merchant>'. Bare LINK* also matches "
-                 "Cash App and other unrelated billers, so it must carry Stripe's URL or city. LINK.COM* is the "
-                 "ordinary Link wallet and is excluded by the 'space after *' rule."),
+                ("Or LINK* followed by a space, at the start of a word",
+                 "From 09-23/24 Stripe shortened the descriptor to 'LINK* <merchant>'. No Stripe URL/city anchor "
+                 "is required: Duffel airline bookings ('LINK* DELTA AIR DUFFEL.COM NY') and truncated card "
+                 "descriptors ('LINK* GO PUFF*GB LIC.') carry neither, and add ~15%. LINK.COM* (the ordinary "
+                 "Link wallet), EVENTLINK* and CLINK* fail the 'space after *' / word-start rules."),
+                ("Not " + ", ".join(AGENTIC_EXCLUDE),
+                 "Unrelated billers that also contain 'LINK* ' (Cash App, PTO Link, Debt-Link...): about 1-2 a day "
+                 "before launch, which is the false-positive floor."),
+                ("Amount > 0", "Purchases only; refunds (about 2% of rows) are negative and excluded."),
             ],
             dedupe="Distinct (source, transaction id).",
-            measure="TXNS = agentic transactions that day. PER_MILLION = TXNS per million panel transactions "
-                    "(same feeds, same day). Panel coverage still fills in for ~10 days, so the rate is the "
+            measure="TXNS = agentic purchases that day; SPEND = their $ total; MEAN_SPEND = SPEND / TXNS "
+                    "(MEAN_SPEND_TR7D is 7-day spend over 7-day count). PER_MILLION = TXNS per million Omega "
+                    "transactions that day. Panel coverage still fills in for ~10 days, so the rate is the "
                     "comparable series and raw counts in the latest days run low. PER_MILLION_TR7D is the ratio "
                     "of 7-day sums, not a mean of daily ratios. The count is a floor: at merchants that take Stripe directly, an agent "
                     "purchase carries the merchant's own descriptor and is invisible here; at the top agentic "
@@ -648,7 +689,7 @@ SECTIONS: list[dict] = [
                 SELECT DISTINCT w.window_name, c.source, c.txn_id, c.member, c.amount, c.merchant
                 FROM srs_mcp.meta.muse_card_txns c
                 JOIN w ON c.day BETWEEN w.start_day AND '{card_through}'
-                WHERE c.signal = 'agentic'
+                WHERE c.signal = 'agentic' AND c.source IN (""" + AGENTIC_SOURCE_SQL + """) AND c.amount > 0
             ), tot AS (
                 -- denominator: every agentic transaction in the window, including unlabelled ones
                 SELECT window_name, SUM(amount) AS spend FROM t GROUP BY 1
@@ -674,7 +715,7 @@ SECTIONS: list[dict] = [
                       "QDI* processor prefix)",
                       "Descriptors truncate merchant names, so this is a label for reading, not an entity match.")],
             dedupe="As above.",
-            measure="A breakdown table rather than a daily series: the top 25 merchants by transactions, with "
+            measure="Purchases only (amount > 0). A breakdown table rather than a daily series: the top 25 merchants by transactions, with "
                     "unique cardholders and median amount, for two windows ending at the card complete-through "
                     f"date: PERIOD = 'Since launch' (from {LAUNCH}, growing each day) or 'Last 28 days'. CARDHOLDERS "
                     "= distinct panel members (per source); TXNS well above CARDHOLDERS means repeat agent "
@@ -695,12 +736,12 @@ SECTIONS: list[dict] = [
                        REGEXP_REPLACE(description, 'XXXX+[0-9]+', 'XXXX') AS description,
                        CASE WHEN description ILIKE '%linkagnt*%' THEN 'LINKAGNT*' ELSE 'LINK*' END AS form
                 FROM srs_mcp.meta.muse_card_txns
-                WHERE signal = 'agentic' AND merchant IS NOT NULL AND day <= '{card_through}'
+                WHERE signal = 'agentic' AND source IN (""" + AGENTIC_SOURCE_SQL + """) AND amount > 0
+                  AND merchant IS NOT NULL AND day <= '{card_through}'
             ), r AS (
-                -- Card panels first: they carry the plain Stripe descriptor, where bank rows wrap it in
-                -- 'DEBIT CARD PURCHASE AT ... CARD#' text.
+                -- Plain descriptors first: some issuers wrap them in 'DEBIT CARD PURCHASE AT ... CARD#' text.
                 SELECT a.*, ROW_NUMBER() OVER (PARTITION BY form
-                                               ORDER BY CASE WHEN source LIKE '% card' THEN 0 ELSE 1 END,
+                                               ORDER BY CASE WHEN UPPER(description) LIKE 'LINK%' THEN 0 ELSE 1 END,
                                                         day DESC, description) AS rn
                 FROM a
                 WHERE (form = 'LINKAGNT*' AND day < '2026-09-23') OR (form = 'LINK*' AND day >= '2026-09-23')
@@ -713,7 +754,7 @@ SECTIONS: list[dict] = [
             source="The agentic transactions above.",
             filters=[("The latest LINKAGNT* record before 2026-09-23 and the latest LINK* record from that date",
                       "One example of each descriptor form, to show what the matching rules see.")],
-            dedupe="One row per form, from a card panel where one exists; no member or transaction ids are "
+            dedupe="One row per form, preferring an unwrapped descriptor; no member or transaction ids are "
                    "published, and masked card-number tails are blanked.",
             measure="DESCRIPTION is the raw card descriptor, MERCHANT the label extracted from it.",
             lag=f"Complete through run date minus {CARD_LAG_DAYS} days.",
@@ -1018,4 +1059,5 @@ SUMMARY = [
     dict(label="Muse in-app gross adds/day", section="inapp_flows_daily", col="GROSS_ADDS_TR7D", where={}),
     dict(label="Muse in-app cancels/day", section="inapp_flows_daily", col="CANCELS_TR7D", where={}),
     dict(label="Agentic txns per million", section="agentic_daily", col="PER_MILLION_TR7D", where={}),
+    dict(label="Agentic mean $ per txn", section="agentic_daily", col="MEAN_SPEND_TR7D", where={}),
 ]

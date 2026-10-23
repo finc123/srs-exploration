@@ -1,0 +1,3 @@
+WITH a AS (SELECT item_id, order_id, merchant_id, order_date FROM SHARE_NIQ.SRS.APPSTORE_HASHES WHERE order_date BETWEEN '2026-01-01' AND '2026-08-31' AND description ILIKE ANY ('%chatgpt%','%claude%','%perplexity%','%grok%','%gemini%')),
+e AS (SELECT item_id, order_id, merchant_id, merchant_name FROM SHARE_NIQ.SRS.ITEMS_EXTENDED WHERE order_date BETWEEN '2025-12-15' AND '2026-09-15' AND merchant_id IN (5, 20122) )
+SELECT a.merchant_id, e.merchant_name, COUNT(*) n, COUNT(e.item_id) in_ie_item, COUNT_IF(a.order_id IN (SELECT order_id FROM e)) in_ie_order FROM a LEFT JOIN e ON a.item_id=e.item_id GROUP BY 1,2

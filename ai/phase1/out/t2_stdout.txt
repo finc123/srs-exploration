@@ -1,0 +1,198 @@
+region       prov     channel ai_month      n  mbx_no_receipt  n_with_ref  ref_missed  n_with_other_ai  other_ai_missed
+    us    chatgpt       apple captured 696131           0.001      509397       0.012            43925            0.019
+    us    chatgpt       apple   missed  37604           0.024       15740       0.231             1476            0.154
+    us    chatgpt google_play captured 147528           0.001       54291       0.019            17319            0.018
+    us    chatgpt google_play   missed   4170           0.109        1320       0.213              319            0.107
+    us     claude       apple captured  43978           0.001       33554       0.007            14221            0.014
+    us     claude       apple   missed   1397           0.014         653       0.193              403            0.226
+    us     claude      direct captured 303337           0.004      114231       0.016            45111            0.018
+    us     claude      direct   missed   7375           0.087        2275       0.064              993            0.077
+    us     claude google_play captured   9985           0.003        2631       0.019             3419            0.013
+    us     claude google_play   missed    171           0.099          43       0.233               54            0.130
+    us     gemini       apple captured  13179           0.002        8670       0.015             4076            0.025
+    us     gemini       apple   missed    572           0.021         204       0.225              171            0.304
+    us     gemini google_play captured 411615           0.002      147719       0.031            69337            0.021
+    us     gemini google_play   missed   7639           0.052        2782       0.170             1100            0.098
+    us       grok       apple captured  24183           0.002       17873       0.011             7811            0.018
+    us       grok       apple   missed   1632           0.012         999       0.180              520            0.158
+    us       grok google_play captured   7297           0.002        2092       0.015             2234            0.010
+    us       grok google_play   missed    414           0.063          93       0.032              106            0.019
+    us perplexity       apple captured  12532           0.001        8972       0.013             4666            0.020
+    us perplexity       apple   missed    563           0.014         277       0.249              186            0.194
+    us perplexity google_play captured   2271           0.008         697       0.024              865            0.017
+    us perplexity google_play   missed     92           0.087          37       0.081               27            0.000
+    eu    chatgpt       apple captured 148681           0.001      121170       0.018             5773            0.023
+    eu    chatgpt       apple   missed   7718           0.049        5777       0.272              218            0.115
+    eu    chatgpt google_play captured  80497           0.001       35232       0.099             5993            0.029
+    eu    chatgpt google_play   missed   3005           0.103        1135       0.272              147            0.218
+    eu    chatgpt      paypal captured  26624           0.001        9811       0.077             1575            0.020
+    eu    chatgpt      paypal   missed    877           0.071         300       0.163               45            0.089
+    eu     claude       apple captured   8264           0.002        6563       0.011             2054            0.026
+    eu     claude       apple   missed    185           0.043         121       0.231               55            0.236
+    eu     claude      direct captured  78538           0.002       25095       0.054             9154            0.023
+    eu     claude      direct   missed   1601           0.071         544       0.171              152            0.112
+    eu     claude google_play captured   4725           0.000        1576       0.053             1209            0.015
+    eu     claude google_play   missed    136           0.162          46       0.196               60            0.117
+    eu     claude      stripe captured  10053           0.006        2983       0.037             1047            0.028
+    eu     claude      stripe   missed    127           0.055          36       0.222               12            0.083
+    eu     gemini       apple captured   4139           0.003        2446       0.016              805            0.026
+    eu     gemini       apple   missed    379           0.050          60       0.117               27            0.074
+    eu     gemini google_play captured  92564           0.001       29232       0.047            14524            0.017
+    eu     gemini google_play   missed   2320           0.054         940       0.205              362            0.102
+    eu     gemini      paypal captured   3536           0.002         951       0.030              437            0.023
+    eu     gemini      paypal   missed    119           0.042          35       0.314                5            0.000
+    eu       grok       apple captured   1808           0.011        1442       0.019              540            0.030
+    eu       grok       apple   missed    112           0.036          82       0.098               26            0.000
+    eu       grok google_play captured   1537           0.002         609       0.041              432            0.016
+    eu       grok google_play   missed     99           0.051          50       0.080               32            0.031
+    eu       grok      stripe captured   1728           0.009         542       0.041              525            0.017
+    eu       grok      stripe   missed    112           0.054          41       0.195               45            0.044
+    eu perplexity       apple captured   1032           0.001         845       0.021              399            0.055
+    eu perplexity       apple   missed     41           0.049          27       0.407               19            0.105
+      prov     channel  ref_miss  users  p_ai_miss region        ref
+   chatgpt       apple     False  45834      0.184     us ref_sender
+   chatgpt       apple      True  14441      0.346     us ref_sender
+   chatgpt google_play     False   6633      0.130     us ref_sender
+   chatgpt google_play      True   2973      0.198     us ref_sender
+    claude       apple     False   5414      0.069     us ref_sender
+    claude       apple      True   1698      0.149     us ref_sender
+    claude      direct     False  17776      0.117     us ref_sender
+    claude      direct      True   5234      0.149     us ref_sender
+    claude google_play     False    710      0.065     us ref_sender
+    claude google_play      True    288      0.097     us ref_sender
+    gemini       apple     False   1394      0.073     us ref_sender
+    gemini       apple      True    470      0.166     us ref_sender
+    gemini google_play     False  29264      0.059     us ref_sender
+    gemini google_play      True  13951      0.123     us ref_sender
+      grok       apple     False   2205      0.176     us ref_sender
+      grok       apple      True    857      0.315     us ref_sender
+      grok google_play     False    463      0.173     us ref_sender
+      grok google_play      True    192      0.214     us ref_sender
+perplexity       apple     False   1086      0.100     us ref_sender
+perplexity       apple      True    400      0.238     us ref_sender
+perplexity google_play     False    129      0.124     us ref_sender
+perplexity google_play      True     45      0.133     us ref_sender
+perplexity       other     False      3      0.333     us ref_sender
+perplexity       other      True      3      0.000     us ref_sender
+   chatgpt       apple     False  11227      0.241     us   other_ai
+   chatgpt       apple      True   1812      0.390     us   other_ai
+   chatgpt google_play     False   3853      0.152     us   other_ai
+   chatgpt google_play      True    562      0.237     us   other_ai
+    claude       apple     False   3635      0.071     us   other_ai
+    claude       apple      True   1280      0.189     us   other_ai
+    claude      direct     False   9270      0.146     us   other_ai
+    claude      direct      True   2039      0.206     us   other_ai
+    claude google_play     False    854      0.073     us   other_ai
+    claude google_play      True    205      0.161     us   other_ai
+    gemini       apple     False    753      0.076     us   other_ai
+    gemini       apple      True    354      0.249     us   other_ai
+    gemini google_play     False  11508      0.083     us   other_ai
+    gemini google_play      True   3217      0.131     us   other_ai
+      grok       apple     False   1460      0.217     us   other_ai
+      grok       apple      True    557      0.323     us   other_ai
+      grok google_play     False    506      0.144     us   other_ai
+      grok google_play      True    133      0.248     us   other_ai
+perplexity       apple     False    792      0.116     us   other_ai
+perplexity       apple      True    365      0.247     us   other_ai
+perplexity google_play     False    156      0.083     us   other_ai
+perplexity google_play      True     52      0.192     us   other_ai
+perplexity       other     False      5      0.200     us   other_ai
+perplexity       other      True      2      0.500     us   other_ai
+   chatgpt       apple     False   8801      0.186     eu ref_sender
+   chatgpt       apple      True   6709      0.306     eu ref_sender
+   chatgpt google_play     False   3184      0.147     eu ref_sender
+   chatgpt google_play      True   2407      0.209     eu ref_sender
+   chatgpt      paypal     False   1112      0.111     eu ref_sender
+   chatgpt      paypal      True    878      0.142     eu ref_sender
+    claude       apple     False    903      0.049     eu ref_sender
+    claude       apple      True    707      0.085     eu ref_sender
+    claude      direct     False   4027      0.063     eu ref_sender
+    claude      direct      True   3385      0.101     eu ref_sender
+    claude google_play     False    301      0.063     eu ref_sender
+    claude google_play      True    234      0.158     eu ref_sender
+    claude       other     False      7      0.286     eu ref_sender
+    claude       other      True      3      0.333     eu ref_sender
+    claude      paypal     False      5      0.000     eu ref_sender
+    claude      paypal      True      2      0.000     eu ref_sender
+    claude      stripe     False    565      0.046     eu ref_sender
+    claude      stripe      True    470      0.081     eu ref_sender
+    gemini       apple     False    411      0.158     eu ref_sender
+    gemini       apple      True    295      0.169     eu ref_sender
+    gemini google_play     False   5655      0.067     eu ref_sender
+    gemini google_play      True   5361      0.127     eu ref_sender
+    gemini      paypal     False    130      0.077     eu ref_sender
+    gemini      paypal      True    105      0.171     eu ref_sender
+      grok       apple     False    163      0.178     eu ref_sender
+      grok       apple      True    140      0.236     eu ref_sender
+      grok google_play     False    111      0.126     eu ref_sender
+      grok google_play      True     75      0.373     eu ref_sender
+      grok      stripe     False     84      0.131     eu ref_sender
+      grok      stripe      True     67      0.179     eu ref_sender
+perplexity       apple     False     67      0.090     eu ref_sender
+perplexity       apple      True     65      0.169     eu ref_sender
+perplexity google_play     False     15      0.067     eu ref_sender
+perplexity google_play      True     15      0.267     eu ref_sender
+perplexity       other     False      1      0.000     eu ref_sender
+perplexity       other      True      1      0.000     eu ref_sender
+   chatgpt       apple     False   2484      0.243     eu   other_ai
+   chatgpt       apple      True    303      0.396     eu   other_ai
+   chatgpt google_play     False   1837      0.177     eu   other_ai
+   chatgpt google_play      True    283      0.322     eu   other_ai
+   chatgpt      paypal     False    667      0.153     eu   other_ai
+   chatgpt      paypal      True     56      0.232     eu   other_ai
+    claude       apple     False    739      0.046     eu   other_ai
+    claude       apple      True    268      0.108     eu   other_ai
+    claude      direct     False   2666      0.080     eu   other_ai
+    claude      direct      True    583      0.160     eu   other_ai
+    claude google_play     False    398      0.116     eu   other_ai
+    claude google_play      True    123      0.187     eu   other_ai
+    claude       other     False      5      0.200     eu   other_ai
+    claude       other      True      6      0.500     eu   other_ai
+    claude      paypal     False      2      0.000     eu   other_ai
+    claude      paypal      True      1      0.000     eu   other_ai
+    claude      stripe     False    354      0.042     eu   other_ai
+    claude      stripe      True     97      0.144     eu   other_ai
+    gemini       apple     False    246      0.114     eu   other_ai
+    gemini       apple      True     87      0.161     eu   other_ai
+    gemini google_play     False   3366      0.094     eu   other_ai
+    gemini google_play      True    710      0.194     eu   other_ai
+    gemini      paypal     False    117      0.077     eu   other_ai
+    gemini      paypal      True     25      0.120     eu   other_ai
+      grok       apple     False    144      0.188     eu   other_ai
+      grok       apple      True     55      0.327     eu   other_ai
+      grok google_play     False    114      0.193     eu   other_ai
+      grok google_play      True     38      0.263     eu   other_ai
+      grok      stripe     False    106      0.151     eu   other_ai
+      grok      stripe      True     34      0.147     eu   other_ai
+perplexity       apple     False     71      0.113     eu   other_ai
+perplexity       apple      True     30      0.167     eu   other_ai
+perplexity google_play     False     30      0.100     eu   other_ai
+perplexity google_play      True      8      0.000     eu   other_ai
+perplexity       other     False      1      0.000     eu   other_ai
+                                     0            1       2       3            4       5            6      7            8           9            10       0            1        2       3       4            5       6       7            8       9      10           11      12          13           14
+region                               us           us      us      us           us      us           us     us           us          us           us       eu           eu       eu      eu      eu           eu      eu      eu           eu      eu     eu           eu      eu          eu           eu
+prov                            chatgpt      chatgpt  claude  claude       claude  gemini       gemini   grok         grok  perplexity   perplexity  chatgpt      chatgpt  chatgpt  claude  claude       claude  claude  gemini       gemini  gemini   grok         grok    grok  perplexity   perplexity
+channel                           apple  google_play   apple  direct  google_play   apple  google_play  apple  google_play       apple  google_play    apple  google_play   paypal   apple  direct  google_play  stripe   apple  google_play  paypal  apple  google_play  stripe       apple  google_play
+users                            118493        27254   17888   73018         3383    5079        86309  11002         3615        4773          707    42639        16363     6539    5703   22443         2141    6740    2397        24228    1342   2134         1158     966         523          187
+capture_all                       0.939        0.986   0.965   0.987        0.977   0.948        0.985   0.93        0.951       0.935        0.954    0.965        0.978    0.969   0.981   0.988        0.967   0.992   0.916        0.977    0.97  0.946         0.92   0.952       0.973        0.951
+has_ref_share                     0.738        0.527   0.761   0.483        0.503   0.736        0.696  0.759        0.479        0.78        0.533    0.793         0.54    0.502   0.807   0.499        0.518   0.479   0.774        0.684   0.496  0.784        0.532    0.49       0.853        0.556
+has_ref_capture                   0.958        0.985   0.972   0.985        0.974   0.965        0.986  0.938        0.944       0.948        0.933    0.966        0.983     0.97   0.984   0.988        0.965   0.989   0.926        0.977   0.958  0.959        0.919   0.943       0.973        0.977
+has_ref_capture_out               0.829        0.982   0.911   0.986        0.974   0.882        0.979   0.86        0.943       0.851        0.954    0.947        0.967    0.963   0.943   0.985        0.964   0.993   0.859        0.976   0.976  0.835         0.91   0.941       0.953        0.912
+ref_clean_share                   0.556        0.359   0.566   0.371         0.35   0.528        0.473  0.543        0.337       0.545        0.379    0.431        0.306    0.281   0.432   0.269        0.278   0.263   0.431         0.35   0.241  0.402        0.319   0.263       0.426        0.289
+ref_clean_capture                 0.972        0.987   0.979   0.988        0.972   0.975        0.989  0.949        0.952       0.963        0.936    0.985        0.988    0.977   0.981   0.993        0.974   0.994   0.927        0.983   0.954  0.933        0.946   0.971       0.961        0.992
+ref_clean_capture_out             0.879        0.982   0.931   0.985        0.973   0.905        0.978  0.891        0.938       0.886        0.952    0.942         0.97    0.964   0.975   0.984        0.961   0.991     0.9        0.971   0.972  0.943        0.885   0.938       0.971        0.935
+ref_90_share                      0.647        0.446   0.665   0.432        0.425    0.62        0.592  0.648        0.398       0.659        0.444    0.603        0.406    0.373   0.608   0.365        0.372   0.355   0.592        0.512   0.359  0.582        0.404   0.347       0.633        0.385
+ref_90_capture                     0.97        0.989   0.978   0.987        0.975   0.974        0.989  0.952        0.941       0.961        0.931    0.981        0.988    0.976   0.986   0.992        0.962    0.99   0.937        0.983   0.956  0.949        0.948   0.982        0.97        0.993
+ref_90_capture_out                0.839         0.98   0.913   0.985        0.971   0.881        0.975  0.851        0.944       0.847        0.953    0.912        0.966     0.96   0.958   0.983        0.965   0.992   0.863        0.964   0.973  0.922        0.888   0.922       0.962        0.928
+S_ref3_clean_share                0.541        0.345   0.553   0.362        0.336   0.512         0.46   0.53        0.327       0.533        0.366    0.421        0.296    0.275   0.422   0.262        0.269   0.256   0.423        0.339   0.233  0.394        0.309   0.252       0.421        0.283
+S_ref3_clean_capture              0.974        0.987   0.979   0.988        0.972   0.976        0.989  0.951        0.949       0.964        0.931    0.985        0.989    0.977   0.981   0.993        0.972   0.994   0.928        0.984   0.953  0.933        0.946   0.971        0.96        0.992
+S_ref3_clean_capture_out          0.877        0.982   0.932   0.985        0.974   0.905        0.979  0.886        0.938       0.885        0.955    0.942         0.97    0.964   0.975   0.984        0.962   0.991   0.899        0.971   0.973  0.943        0.888   0.937       0.971        0.935
+oth_clean_share                   0.105        0.162   0.256   0.149        0.315   0.196        0.149   0.18        0.186       0.215        0.276    0.068        0.131    0.132   0.178   0.141        0.252    0.09   0.158        0.162   0.159   0.11        0.153    0.19       0.182        0.273
+oth_clean_capture                 0.952        0.982   0.973   0.982        0.965   0.974        0.979   0.91        0.959       0.946        0.948    0.967        0.974    0.953   0.981   0.983         0.94   0.992   0.931         0.98    0.95  0.917        0.851   0.932       0.957        0.925
+oth_clean_capture_out             0.935        0.986   0.953   0.986        0.984   0.933        0.986  0.938        0.934       0.924        0.949    0.965        0.977    0.971   0.977   0.988        0.981   0.991   0.907        0.976   0.971  0.956        0.952   0.955        0.97         0.98
+S_ref_or_oth_clean_share          0.594        0.441   0.647   0.433        0.531   0.593        0.538  0.605         0.44       0.616        0.523    0.465        0.384    0.371   0.513   0.353        0.442   0.318   0.503        0.447   0.353  0.455        0.415   0.382       0.514        0.465
+S_ref_or_oth_clean_capture        0.966        0.986   0.977   0.986        0.976   0.974        0.987  0.938        0.958       0.957        0.942     0.98        0.982    0.969   0.984   0.991        0.953   0.994   0.926        0.983   0.962  0.946        0.899   0.944       0.963        0.938
+S_ref_or_oth_clean_capture_out     0.87        0.982   0.914   0.985        0.973   0.883        0.979  0.889        0.926       0.861        0.952     0.94        0.972    0.967   0.964   0.984        0.978    0.99   0.891        0.968   0.973  0.942        0.931   0.946       0.968        0.971
+S_any_other_share                 0.754        0.578   0.808   0.525        0.666   0.784        0.735  0.793        0.571       0.825        0.672      0.8        0.582    0.557   0.825   0.544        0.641   0.513     0.8         0.73   0.567  0.792        0.609    0.58       0.872        0.695
+S_any_other_capture               0.956        0.984   0.968   0.985        0.975   0.956        0.985  0.931         0.95       0.939        0.945    0.966         0.98    0.971   0.984   0.988        0.959   0.989   0.921        0.977   0.964  0.945        0.897   0.929       0.973        0.945
+S_any_other_capture_out           0.821        0.984   0.896   0.985        0.978   0.894        0.982  0.856        0.927       0.864        0.978    0.949        0.971    0.964   0.903   0.987        0.977   0.993   0.863        0.973   0.977  0.952        0.959   0.988       0.882        0.962

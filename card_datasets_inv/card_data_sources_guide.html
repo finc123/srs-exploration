@@ -1,0 +1,350 @@
+<title>Card Data Sources Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Public+Sans:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a single reading column (about 70ch) with wide tables allowed to break out and scroll; a sticky contents rail on wide screens. */
+:root {
+  --paper: #f6f8fa;
+  --surface: #ffffff;
+  --ink: #17212b;
+  --muted: #56626e;
+  --rule: #d5dde4;
+  --accent: #0f6e78;
+  --accent-soft: #e2f1f2;
+  --good: #23704a;
+  --warn: #9a5b06;
+  --bad: #a3312b;
+  --good-soft: #e3f2ea;
+  --warn-soft: #fbf0dc;
+  --bad-soft: #f8e4e2;
+  --font-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Public Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", Consolas, "Courier New", monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #11171c; --surface: #182129; --ink: #e3e9ee; --muted: #9aa7b2; --rule: #2c3842;
+    --accent: #5cc3cc; --accent-soft: #163236; --good: #6fcf9b; --warn: #e3ab55; --bad: #f08a82;
+    --good-soft: #17301f; --warn-soft: #33270f; --bad-soft: #3a1c1a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #11171c; --surface: #182129; --ink: #e3e9ee; --muted: #9aa7b2; --rule: #2c3842;
+  --accent: #5cc3cc; --accent-soft: #163236; --good: #6fcf9b; --warn: #e3ab55; --bad: #f08a82;
+  --good-soft: #17301f; --warn-soft: #33270f; --bad-soft: #3a1c1a; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--paper); color: var(--ink); font: 15px/1.6 var(--font-body); padding-inline: 16px; padding-block: 0 64px; }
+.wrap { max-width: 1120px; margin: 0 auto; display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 48px; }
+nav.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 24px); align-self: start; padding-top: 56px; font-size: 13px; }
+nav.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+nav.toc a { color: var(--muted); text-decoration: none; }
+nav.toc a:hover, nav.toc a:focus-visible { color: var(--accent); }
+main { min-width: 0; }
+header { padding-block: 56px 28px; border-bottom: 1px solid var(--rule); margin-bottom: 8px; }
+.eyebrow { font: 600 12px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+h1 { font: 700 clamp(30px, 5vw, 44px)/1.08 var(--font-display); margin: 12px 0 14px; text-wrap: balance; letter-spacing: -.01em; }
+h2 { font: 700 24px/1.2 var(--font-display); margin: 48px 0 12px; text-wrap: balance; }
+h3 { font: 600 17px/1.3 var(--font-display); margin: 28px 0 8px; }
+p, li { max-width: 70ch; }
+p { margin: 0 0 12px; }
+ul { margin: 0 0 12px; padding-left: 20px; display: grid; gap: 4px; }
+.lede { font-size: 17px; color: var(--muted); max-width: 64ch; }
+.meta { font-size: 13px; color: var(--muted); margin-top: 14px; }
+code, .t { font: 400 12.5px/1.4 var(--font-mono); background: var(--accent-soft); color: var(--ink); padding: 1px 5px; border-radius: 3px; overflow-wrap: anywhere; }
+a { color: var(--accent); }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.bottom-line { background: var(--surface); border: 1px solid var(--rule); border-left: 4px solid var(--accent); padding: 20px 22px; margin: 24px 0 8px; }
+.bottom-line h2 { margin-top: 0; font-size: 19px; }
+.bottom-line ol { margin: 0; padding-left: 20px; display: grid; gap: 8px; }
+.scroll { overflow-x: auto; margin: 12px 0 16px; border: 1px solid var(--rule); background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--rule); }
+th { font: 600 11.5px/1.3 var(--font-mono); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); background: var(--paper); white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+td.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.k { white-space: nowrap; font-weight: 600; }
+.pill { display: inline-block; font: 600 11px/1.5 var(--font-mono); padding: 1px 7px; border-radius: 10px; white-space: nowrap; }
+.pill.good { background: var(--good-soft); color: var(--good); }
+.pill.warn { background: var(--warn-soft); color: var(--warn); }
+.pill.bad { background: var(--bad-soft); color: var(--bad); }
+.pill.info { background: var(--accent-soft); color: var(--accent); }
+.sources { display: grid; gap: 14px; margin-top: 12px; }
+.src { background: var(--surface); border: 1px solid var(--rule); padding: 18px 20px; min-width: 0; }
+.src h3 { margin: 0 0 4px; display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.src .where { font: 400 12.5px/1.5 var(--font-mono); color: var(--muted); overflow-wrap: anywhere; margin-bottom: 10px; }
+.src dl { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 6px 16px; margin: 10px 0 0; font-size: 14px; }
+.src dt { color: var(--muted); font-weight: 600; font-size: 13px; }
+.src dd { margin: 0; min-width: 0; }
+.tree { background: var(--surface); border: 1px solid var(--rule); padding: 18px 20px; overflow-x: auto; }
+.tree pre { margin: 0; font: 400 12.5px/1.65 var(--font-mono); color: var(--ink); }
+.tree .hl { color: var(--accent); font-weight: 600; }
+.callout { background: var(--warn-soft); border: 1px solid var(--rule); padding: 14px 18px; margin: 14px 0; }
+.callout.good { background: var(--good-soft); }
+.small { font-size: 13px; color: var(--muted); }
+footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--rule); font-size: 13px; color: var(--muted); }
+@media (max-width: 860px) {
+  .wrap { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  nav.toc { display: none; }
+  .src dl { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .src dd { margin-bottom: 8px; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<div class="wrap">
+<nav class="toc" aria-label="Contents">
+  <ol>
+    <li><a href="#bottom-line">Bottom line</a></li>
+    <li><a href="#map">How the sources fit together</a></li>
+    <li><a href="#sources">Source profiles</a></li>
+    <li><a href="#overlap">Measured overlap</a></li>
+    <li><a href="#agentic">Agentic descriptors</a></li>
+    <li><a href="#when">When to use what</a></li>
+    <li><a href="#suggestions">Suggestions for jjsinger and cwang</a></li>
+    <li><a href="#gaps">Open questions</a></li>
+    <li><a href="#method">Method and files</a></li>
+  </ol>
+</nav>
+
+<main>
+<header>
+  <div class="eyebrow">SRS data team · card and bank transaction panels</div>
+  <h1>Card Data Sources Guide</h1>
+  <p class="lede">What each card and bank transaction dataset in Snowflake is, how the datasets relate to each other, and which one to use for a given analysis. Written for the Muse agentic-transaction work, but it covers every live row-level source in the Earnest, Fable, SHARE_CE, SHARE_EARNEST and SHARE_FABLE databases.</p>
+  <p class="meta">Fin Creedon · 16 Oct 2026 · Figures measured in Snowflake 15–16 Oct 2026 · Working files in <code>exploration/card_datasets_inv/</code></p>
+</header>
+
+<section class="bottom-line" id="bottom-line" aria-labelledby="bl-h">
+  <h2 id="bl-h">Bottom line</h2>
+  <ol>
+    <li><strong>Every live US source comes from Consumer Edge (which absorbed Earnest), and most of it from Yodlee.</strong> The tables are different cuts and enrichments of two underlying panels, <strong>Omega</strong> and <strong>Tau</strong>. They are not independent samples, so never add them together.</li>
+    <li><strong>Prime Omega (2822) is the superset for the Omega panel.</strong> It contains about 99% of the Yodlee agentic transactions Muse finds today, plus about 44% more from sources that Muse doesn't read. Despite being labelled per-merchant, its <code>MERCHDESC</code> keeps the full statement text, <code>LINKAGNT*</code> included.</li>
+    <li><strong>Tau is a separate panel that Muse can't see today.</strong> Tau adds about 440 agentic transactions a month, on top of about 1,040 in Omega (September 2026).</li>
+    <li><strong>For Muse, the recommendation is to move from the raw Yodlee feeds to Prime Omega.</strong> Either use Josh's view (<code>EARNEST.COMMON.CE_PRIME_OMEGA_PANEL_TXNS</code>), or read <code>TRANS_V1_0</code> joined to <code>MID_V1_0</code> directly for the full population. Treat Tau as a separately reported panel.</li>
+    <li><strong>Drop the old sources:</strong> 279 <code>DIRECT*</code> and <code>SIGMA</code>, and Yodlee feeds 1 and 2 (all stopped), and every snapshot, change-log and mirror copy. Use 279 only where its Earnest merchant tags or existing pipelines are needed. It is being replaced by 2822.</li>
+  </ol>
+</section>
+
+<h2 id="map">How the sources fit together</h2>
+<p>All the US data is Consumer Edge. Raw card and bank data comes from Yodlee aggregation. Consumer Edge then delivers it in three forms: raw, Earnest-enriched (the legacy "279" schema), and CE-enriched (the new "2822" schema). Fable is a separate European vendor.</p>
+<div class="tree" role="img" aria-label="Lineage of the card datasets">
+<pre>Omega panel (old "C panel", history to 2011, ~110M users / 45M active)
+ ├─ Yodlee raw feeds 3 · 4 · 6 ......... <span class="hl">SHARE_CE_SPEND_201_PRIME_EX_TAU</span>   ≈ 40% of Omega
+ │    (feeds 1 · 2 stopped May–Sep 2025; there is no feed 5)
+ ├─ other upstream sources ............. not delivered raw               ≈ 60% of Omega
+ ├─ CE enrichment, new schema .......... <span class="hl">SHARE_CE_PRIME_ENRICHED_OMEGA_2822.PRIME_OMEGA</span>   (all of Omega)
+ │    └─ SRS view, CS 2019/2022 panels .. <span class="hl">EARNEST.COMMON.CE_PRIME_OMEGA_PANEL_TXNS</span>   (≈22% of Omega)
+ └─ Earnest enrichment, legacy schema .. <span class="hl">SHARE_EARNEST_279.PRIME</span>   (⊂ Yodlee 3/4/6, ≈⅓ of feed 3)
+      └─ sync-service earnest-&lt;TICKER&gt; .. <span class="hl">EARNEST.&lt;TICKER&gt;.TXNS</span>   (merchant-filtered cuts of 279 PRIME)
+
+Tau panel (separately sourced, newer; no Yodlee overlap)
+ ├─ CE enrichment, new schema .......... <span class="hl">SHARE_CE_PRIME_ENRICHED_TAU_2822.PRIME_TAU</span>   (all of Tau)
+ └─ Earnest enrichment, legacy schema .. <span class="hl">SHARE_EARNEST_279.PRIME_TAU</span>   (⊂ Tau, ≈43% of it)
+
+Fable Data (Europe; separate vendor)
+ └─ row level .......................... <span class="hl">SHARE_FABLE.FABLE_SIGNAL.{UK,DE,FR,ES,IT}_V2_TXN, FR_V3_TXN</span></pre>
+</div>
+<p class="small">The share and percentage figures are measured: see <a href="#overlap">Measured overlap</a>. The panel descriptions come from Consumer Edge's 3 Aug 2026 changeover call (Notion). "Other upstream sources" is the part of Omega that has no match in Yodlee feeds 3/4/6; nothing documents what it is.</p>
+
+<h2 id="sources">Source profiles</h2>
+<p>December 2025 sizes are distinct transaction ids. Every source listed is updated daily and is current to within 1–3 days.</p>
+<div class="scroll">
+<table>
+  <thead><tr><th>Source</th><th>Panel</th><th>Per-transaction description</th><th>History from</th><th>Dec-25 txns</th><th>Panel weights</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr><td class="k">Prime Omega (2822)</td><td>Omega</td><td><code>MID_V1_0.MERCHDESC</code> via <code>MERCHID</code></td><td>2000 (dense from 2011)</td><td class="n">1,939M</td><td>22 panels in <code>CARDLINK_PANEL_V1_0</code></td><td><span class="pill good">production</span></td></tr>
+    <tr><td class="k">Josh's view</td><td>Omega, CS 2019/2022 only</td><td><code>MERCHDESC</code></td><td>2019-01-01</td><td class="n">418M</td><td><code>WEIGHT_AGG_CS2019/2022</code> on the row</td><td><span class="pill good">production</span></td></tr>
+    <tr><td class="k">Prime Tau (2822)</td><td>Tau</td><td><code>MID_V1_0.MERCHDESC</code></td><td>2013 (CE says 2024)</td><td class="n">822M</td><td>none (CE: build our own)</td><td><span class="pill good">production</span></td></tr>
+    <tr><td class="k">Yodlee feeds 3/4/6</td><td>part of Omega</td><td><code>DESCRIPTION</code> (raw)</td><td>2001–2012</td><td class="n">1,115M</td><td>none</td><td><span class="pill warn">raw, unenriched</span></td></tr>
+    <tr><td class="k">279 PRIME</td><td>part of Omega</td><td><code>BILLING_DESCRIPTION</code></td><td>2015-02-26</td><td class="n">278M</td><td><code>MEMBER_WEIGHTS</code>, <code>MEMBER_PANELS</code></td><td><span class="pill warn">being replaced</span></td></tr>
+    <tr><td class="k">279 PRIME_TAU</td><td>part of Tau</td><td><code>BILLING_DESCRIPTION</code></td><td>2023-03-28</td><td class="n">432M</td><td>none</td><td><span class="pill warn">being replaced</span></td></tr>
+    <tr><td class="k">EARNEST.&lt;TICKER&gt;.TXNS</td><td>part of 279 PRIME</td><td><code>BILLING_DESCRIPTION</code></td><td>2015+</td><td class="n">0.01–40M each</td><td><code>WEIGHT</code>, <code>CS_PANEL_2019/2022</code></td><td><span class="pill info">company work</span></td></tr>
+    <tr><td class="k">Fable (Europe)</td><td>Fable, per country</td><td><code>DESCRIPTION</code></td><td>1994–2019</td><td class="n">228M total</td><td>rolling panel; <code>MERCHANT_WEIGHTS</code></td><td><span class="pill good">production</span></td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="sources">
+  <article class="src">
+    <h3>Prime Omega (2822) <span class="pill good">use this</span></h3>
+    <div class="where">SHARE_CE_PRIME_ENRICHED_OMEGA_2822.PRIME_OMEGA.TRANS_V1_0 + MID_V1_0, MID_MATCH_V1_0, CARD_V1_0, CARDLINK_PANEL_V1_0</div>
+    <p>Consumer Edge's new production row-level schema ("Orion Prime 2.0"), and the replacement for 279. It is the whole Omega panel: 156B rows, 12.9 TB, and about 54M transactions a day.</p>
+    <dl>
+      <dt>Ids</dt><dd><code>TRANSID</code> (CE id); <code>PARTNER_TRANSID</code> = Yodlee transaction id = 279 <code>PARTNER_TRANSACTION_ID</code>; <code>CARDLINKID</code> = Yodlee <code>UNIQUE_MEM_ID</code> = 279 <code>MEMBER_ID</code> (all measured)</dd>
+      <dt>Description</dt><dd><code>MERCHID</code> → <code>MID_V1_0.MERCHDESC</code>. This is documented as a merchant descriptor, but it is the statement text with dates and card digits stripped, so it works as a per-transaction description (see <a href="#agentic">Agentic descriptors</a>).</dd>
+      <dt>Dates</dt><dd><code>TRANS_DATE</code> (cleaned; use this), <code>PARTNER_TRANS_DATE</code>, <code>PARTNER_POST_DATE</code>, <code>FILEDATE</code></dd>
+      <dt>Panels</dt><dd>22 panels in <code>CARDLINK_PANEL_V1_0</code>. CE recommends <code>aggregate_consistent_shopper_2022_v2</code> (≈3.6M cards), or <code>_2019_v2</code> (≈0.5M) for longer history.</dd>
+      <dt>Watch for</dt><dd>It is unclustered: always filter <code>FILEDATE</code> as well as <code>TRANS_DATE</code>. Exclude <code>PRIME_OMEGA_STATIC.AFFECTED_ACCOUNTS_092026</code>. Our role can't read <code>PRIME_TAU</code> inside this database, so use the TAU_2822 database for Tau.</dd>
+    </dl>
+  </article>
+
+  <article class="src">
+    <h3>Josh's view: CE_PRIME_OMEGA_PANEL_TXNS <span class="pill good">use for panel work</span></h3>
+    <div class="where">EARNEST.COMMON.CE_PRIME_OMEGA_PANEL_TXNS (view; DDL in srs scripts/sql/earnest_ce_prime_omega_panel_txns_view.sql)</div>
+    <p>Prime Omega restricted to cards in the two consistent-shopper panels. Merchant description, brand, CER symbol, channel, card, income, home location and panel weights are all joined on, from 2019-01-01. It excludes the September 2026 affected accounts. The panels cover about 22% of Omega's transactions (418M of 1,939M in Dec 2025).</p>
+    <dl>
+      <dt>Grain</dt><dd>One row per transaction <em>per matching ticker symbol</em>. Count <code>DISTINCT TRANSID</code> rather than rows.</dd>
+      <dt>Use</dt><dd>Filter <code>weight_agg_cs2022 IS NOT NULL</code>, weight by the same column, and add <code>currency = 'USD'</code>. Always filter <code>TRANS_DATE</code>, and <code>FILEDATE</code> too.</dd>
+      <dt>Watch for</dt><dd>It is slow: about 2.5 minutes per symbol-week, and an unfiltered MIN/MAX doesn't finish. A filter on <code>SYMBOL</code> drops untagged merchants, including Link agent descriptors. The all-cardholder sibling <code>CE_PRIME_OMEGA_TXNS</code> is on srs master (PR #2522) but isn't deployed. The view doesn't apply the user-score exclusion used in the 279→2822 validation SQL.</dd>
+    </dl>
+  </article>
+
+  <article class="src">
+    <h3>Prime Tau (2822) <span class="pill info">separate panel</span></h3>
+    <div class="where">SHARE_CE_PRIME_ENRICHED_TAU_2822.PRIME_TAU.TRANS_V1_0 + MID_V1_0, MID_MATCH_V1_0, CARD_V1_0</div>
+    <p>A separately sourced panel. It shares no transaction or member ids with Omega or Yodlee, and has about 27M transactions a day. CE describes it as "completely separate from Omega", with no recommended member panel. The schema is the same as Omega's.</p>
+    <dl>
+      <dt>Description</dt><dd><code>MERCHDESC</code>, as for Omega</dd>
+      <dt>Panels</dt><dd>There is no <code>CARDLINK_PANEL</code> table, so SRS would have to build its own panel.</dd>
+      <dt>Watch for</dt><dd>The history start is unclear: rows from 2013, against "Jan 2024" per CE and 2023-03-28 in 279 <code>PRIME_TAU</code>. It was dropped from Muse on 7 Oct 2026 because it was small (about 3 agentic transactions a day in 279) and would distort the per-million denominator.</dd>
+    </dl>
+  </article>
+
+  <article class="src">
+    <h3>Yodlee feeds 3, 4 and 6 <span class="pill warn">what Muse reads today</span></h3>
+    <div class="where">SHARE_CE_SPEND_201_PRIME_EX_TAU.FEED{3,4,6}_PANELS.FEED{n}_{CARD,BANK}_PANELS_V1_0</div>
+    <p>Raw, unenriched Yodlee transactions with the financial institution's own description text. Together they make up about 40% of Omega. The three feeds are separate panels: no transaction ids repeat across feeds and almost no members do. Within a feed, card and bank tables share members (31% of feed 3 card members and 57% of feed 6 card members are also in the bank table).</p>
+    <dl>
+      <dt>Ids</dt><dd><code>UNIQUE_{CARD|BANK}_TRANSACTION_ID</code>, <code>UNIQUE_MEM_ID</code></dd>
+      <dt>Description</dt><dd><code>DESCRIPTION</code>, the raw FI text</dd>
+      <dt>Watch for</dt><dd>It is unclustered and prunes only on <code>PANEL_FILE_CREATED_DATE</code>. Pending and posted copies of one charge can carry different ids. There are no panels or weights, and the account and refresh tables are incomplete. Feeds 1 and 2 ended (last transactions May 2025, last update 15 Sep 2025). No production pipeline reads these feeds; only Muse does.</dd>
+    </dl>
+  </article>
+
+  <article class="src">
+    <h3>279 PRIME and PRIME_TAU <span class="pill warn">legacy schema</span></h3>
+    <div class="where">SHARE_EARNEST_279.{PRIME,PRIME_TAU}.SPEND_279_TRANSACTIONS_V3_0 (the SHARE_CE_SPEND_279_* databases are exact mirrors)</div>
+    <p>Earnest-enriched transactions in the legacy schema, with Earnest merchant tags (<code>PARENT_MERCHANT</code>, <code>MERCHANT</code>, category, channel). <code>PRIME</code> is a subset of Yodlee feeds 3/4/6: about a third of feed 3 plus parts of 4 and 6. <code>PRIME_TAU</code> is a 43% subset of Tau.</p>
+    <dl>
+      <dt>Ids</dt><dd><code>EARNEST_TRANSACTION_ID</code>, <code>PARTNER_TRANSACTION_ID</code> (= Yodlee and Omega partner id), <code>MEMBER_ID</code></dd>
+      <dt>Description</dt><dd><code>BILLING_DESCRIPTION</code>, per transaction</dd>
+      <dt>Panels</dt><dd><code>PRIME.MEMBER_PANELS_V3_0</code> and <code>PRIME_STATIC.MEMBER_WEIGHTS_V1_0</code>. Use the <code>_v2</code> methods; the legacy ones still exist and still feed <code>company_data</code>.</dd>
+      <dt>Watch for</dt><dd>Rows repeat once per merchant tag (about 1.4 rows per transaction; Link agent rows carry both <code>link_agent_wallet</code> and the real merchant), so count distinct ids. 2822 replaces this schema. The <code>DIRECT*</code> and <code>SIGMA</code> schemas stopped in 2025.</dd>
+    </dl>
+  </article>
+
+  <article class="src">
+    <h3>EARNEST.&lt;TICKER&gt;.TXNS <span class="pill info">company work</span></h3>
+    <div class="where">EARNEST.{PDD,UBER,NFLX,SPOT,ETSY,CHWY,DIS,WBD,AIRLINES,RBLX,TSLA,…}.TXNS</div>
+    <p>SRS-built daily extracts. The sync-service <code>earnest-&lt;TICKER&gt;</code> jobs load the monthly 279 <code>PRIME</code> snapshot from Earnest's S3 bucket, filtered by a merchant regex. They apply the daily change logs, then add <code>SCALARS</code>, the CS 2019/2022 flags and a v2 <code>WEIGHT</code>. Measured: <code>PDD.TXNS</code> is entirely inside 279 <code>PRIME</code>. Despite its name it covers PDD, Shein, Amazon, Walmart, Etsy, Chewy, TikTok and Ulta: about 12% of 279's transactions.</p>
+    <dl>
+      <dt>Use</dt><dd>Ticker KPI work where the weights and scalars are already applied.</dd>
+      <dt>Watch for</dt><dd>These are pre-filtered to named merchants, so they can't find new merchants. Several schemas are stale (DASH, META, TMUS, LAD, LMND, ROKU). A member with several v2 weights can fan out rows, so compare <code>COUNT(DISTINCT earnest_transaction_id)</code> with <code>COUNT(*)</code>.</dd>
+    </dl>
+  </article>
+
+  <article class="src">
+    <h3>Fable (Europe) <span class="pill info">Europe only</span></h3>
+    <div class="where">SHARE_FABLE.FABLE_SIGNAL.{UK,DE,ES,IT}_V2_TXN, FR_V2_TXN, FR_V3_TXN (+ _SUPP, USER_MASTER, REFERENCE_DATA)</div>
+    <p>A separate vendor covering European credit, debit and open-banking panels, one table per country, with a per-transaction <code>DESCRIPTION</code>. Dec 2025: FR v3 71M, FR v2 55M, UK 53M, ES 26M, IT 13M, DE 11M. The <code>*_SIGNAL</code> views equal the <code>*_TXN</code> tables.</p>
+    <dl>
+      <dt>France</dt><dd>FR v3 (debit) replaces FR v2 (credit), which is removed by 31 Dec 2026. The two use different keys. v3 has about 2.5× the users, and about 65% of v2's rows match v3 on description and amount.</dd>
+      <dt>Watch for</dt><dd>There are no weights on rows; Fable uses a rolling-panel method. SRS's <code>FABLE.COMMON</code> aggregates come from the separate Signal Daily shares, not from these tables. Muse found no <code>LINKAGNT*</code> rows in Fable, only regular <code>link.com*</code> wallet rows.</dd>
+    </dl>
+  </article>
+</div>
+
+<h3>Not covered here</h3>
+<ul>
+  <li><strong>Snapshot, change-log and backup copies</strong> (<code>PRIME_SNAPSHOTS*</code>, <code>PRIME_INCREMENTAL*</code>, <code>*_BKP</code>). Snapshots match their current tables to within 0.1%.</li>
+  <li><strong>Mirror databases</strong> (the four 279 shares, OMEGA/TAU_2822, the three Fable and three TRANSACT_USA databases).</li>
+  <li><strong>Consumer Edge TRANSACT_USA</strong> and the <code>*_DAILY_SIGNAL</code> shares. These are CE's pre-aggregated KPI products (no transaction rows): the "official" daily and period KPIs by symbol, brand and geography.</li>
+</ul>
+
+<h2 id="overlap">Measured overlap</h2>
+<p>Each figure is the share of the row source's transactions (or members) that also appear in the column source. They come from hashed 1-in-1,000 transaction samples and 1-in-2,000 member samples for one day, 2026-09-10. Because both sides are sampled on the same hash, an id that is in both tables lands in both samples.</p>
+<div class="scroll">
+<table>
+  <thead><tr><th>Source A</th><th>…found in B</th><th>Transactions</th><th>Members</th><th>What it means</th></tr></thead>
+  <tbody>
+    <tr><td class="k">279 PRIME</td><td>Yodlee 3/4/6</td><td class="n">≈100%</td><td class="n">≈100%</td><td>279 PRIME is a filtered subset of the raw Yodlee feeds (91% feed 3 bank)</td></tr>
+    <tr><td class="k">Yodlee feed 3</td><td>279 PRIME</td><td class="n">31–32%</td><td class="n">41–44%</td><td>279 keeps about a third of the feed</td></tr>
+    <tr><td class="k">Yodlee bank feeds</td><td>Prime Omega</td><td class="n">76–98%</td><td class="n">97–98%</td><td>Omega contains the Yodlee bank feeds</td></tr>
+    <tr><td class="k">Yodlee card feeds</td><td>Prime Omega</td><td class="n">16–63% by id</td><td class="n">81–97%</td><td>Same people, but fewer card ids match. Possibly re-keyed or deduped card rows; 99% of agentic card rows do match (below)</td></tr>
+    <tr><td class="k">Prime Omega</td><td>Yodlee 3/4/6</td><td class="n">≈43%</td><td class="n">≤60%</td><td>Omega is much bigger than the raw feeds we receive</td></tr>
+    <tr><td class="k">279 PRIME</td><td>Prime Omega</td><td class="n">67%</td><td class="n">96%</td><td>Same panel; most 279 rows are in Omega</td></tr>
+    <tr><td class="k">279 PRIME_TAU</td><td>Prime Tau</td><td class="n">99%</td><td class="n">100%</td><td>279 PRIME_TAU is a subset of Tau</td></tr>
+    <tr><td class="k">Prime Tau</td><td>279 PRIME_TAU</td><td class="n">43%</td><td class="n">71%</td><td>…covering 43% of Tau's transactions</td></tr>
+    <tr><td class="k">Prime Tau</td><td>Omega, Yodlee, 279 PRIME</td><td class="n">0%</td><td class="n">0%</td><td>Tau is a fully separate panel</td></tr>
+    <tr><td class="k">Yodlee feed n</td><td>Yodlee feed m</td><td class="n">0%</td><td class="n">≈0%</td><td>The feeds don't overlap, so adding them is safe</td></tr>
+    <tr><td class="k">EARNEST.PDD.TXNS</td><td>279 PRIME</td><td class="n">100%</td><td class="n">100%</td><td>Ticker extracts are cuts of 279 PRIME</td></tr>
+    <tr><td class="k">Fable FR v2</td><td>Fable FR v3</td><td class="n">0% by id · ≈65% by content</td><td class="n">0% by id</td><td>Re-keyed. v3 has 2.5× the users, so treat it as a new series</td></tr>
+  </tbody>
+</table>
+</div>
+<p class="small">One-day samples: about 135k Omega rows, 67k Tau, 26k 279 PRIME and 39k 279 PRIME_TAU, and 1–33k per Yodlee table. Transaction matches use the transaction or partner id. Members match on Yodlee <code>UNIQUE_MEM_ID</code> = 279 <code>MEMBER_ID</code> = Omega <code>CARDLINKID</code>. The ranges cover the different feeds.</p>
+
+<h2 id="agentic">Agentic descriptors: can 2822 replace the Yodlee feeds?</h2>
+<p>Muse finds Stripe Link agent payments by matching <code>LINKAGNT*</code>, or <code>LINK*</code> with <code>www.link.co</code> / <code>south san fra</code>, in Yodlee's <code>DESCRIPTION</code>. 2822 has no per-transaction description column, so the question was whether its per-merchant <code>MERCHDESC</code> keeps that text. Every test below covers September 2026.</p>
+<div class="callout good">
+  <strong>Yes. <code>MERCHDESC</code> keeps the Link agent text.</strong> Of Muse's 739 agentic transactions, 730 are in Prime Omega (by partner id), and all 730 match the same agentic pattern on <code>MERCHDESC</code>. The text is the Yodlee description with dates, card digits and bank prefixes stripped. For example, Yodlee's <code>LINK* STARBUCKS 09-28 WWW.LINK.COM CA 9376 DEBIT CARD PURCHA</code> becomes <code>LINK* STARBUCKS WWW.LINK.COM CA</code>.
+</div>
+<div class="scroll">
+<table>
+  <thead><tr><th>Source, Sep 2026</th><th>Agentic txns</th><th>Agentic members</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td class="k">Muse today (Yodlee 3/4/6)</td><td class="n">739</td><td class="n">—</td><td>The current Muse input</td></tr>
+    <tr><td class="k">Prime Omega via MERCHDESC</td><td class="n">1,040</td><td class="n">722</td><td>715 of them also in Muse, so Omega adds about 325 (+44%). It covers all but 9 of Muse's</td></tr>
+    <tr><td class="k">…of which in Josh's view panels</td><td class="n">262</td><td class="n">—</td><td>25% of the agentic transactions, on 25% of all transactions (376M of 1,518M). That is 0.70 per million inside the panels against 0.68 outside, so the panels aren't biased for agentic spend. They hold only a quarter of the events, though.</td></tr>
+    <tr><td class="k">Prime Tau via MERCHDESC</td><td class="n">438</td><td class="n">258</td><td>429 of them also in 279 PRIME_TAU. None reach Muse today</td></tr>
+    <tr><td class="k">279 PRIME_TAU via BILLING_DESCRIPTION</td><td class="n">433</td><td class="n">259</td><td>About the same as Tau, so for agentic work 279 PRIME_TAU ≈ Tau</td></tr>
+  </tbody>
+</table>
+</div>
+<p class="small">Prime Omega found 1,719 merchant ids whose <code>MERCHDESC</code> matches the agentic pattern, and Tau 548. A Link agent payment gets its own merchant id per merchant and store. The 9 Muse transactions not found in Omega are probably pending copies, or recent rows not yet in Omega; this has not been checked.</p>
+
+<h2 id="when">When to use what</h2>
+<div class="scroll">
+<table>
+  <thead><tr><th>Analysis</th><th>Use</th><th>Why</th></tr></thead>
+  <tbody>
+    <tr><td class="k">Agentic / descriptor tracking (Muse)</td><td>Prime Omega <code>TRANS_V1_0</code> ⨝ <code>MID_V1_0</code>, reported alongside Prime Tau</td><td>It is the superset of today's Yodlee input, with the same descriptor text, and finds +44% more agentic transactions. Josh's panels hold only a quarter of them, though at the same rate, so use the panels for weighted rates only. Report Tau separately, or not at all, because it has no panel.</td></tr>
+    <tr><td class="k">Weighted, trend-consistent rates (per million, share of wallet)</td><td>Josh's view, filtered to <code>weight_agg_cs2022 IS NOT NULL</code> (or 2019 for longer history)</td><td>Consistent panels with weights give stable denominators. Count <code>DISTINCT TRANSID</code>.</td></tr>
+    <tr><td class="k">Ticker KPIs (revenue, users, AOV)</td><td>Josh's view by <code>SYMBOL</code>; existing <code>EARNEST.&lt;TICKER&gt;.TXNS</code> until migrated</td><td>The CER symbol mapping and weights are built in. The ticker tables carry SRS's existing scalars.</td></tr>
+    <tr><td class="k">New or untagged merchants (no brand yet)</td><td>Prime Omega ⨝ <code>MID_V1_0</code>, or Josh's view <em>without</em> a <code>SYMBOL</code> filter</td><td><code>MERCHDESC</code> keeps the raw text, and untagged merchants have a NULL symbol.</td></tr>
+    <tr><td class="k">Earnest merchant tags or category / channel splits</td><td>279 <code>PRIME</code> (and <code>PRIME_TAU</code>)</td><td>Only 279 carries <code>PARENT_MERCHANT</code>, <code>MERCHANT</code>, <code>CATEGORY</code> and <code>CHANNEL</code>. 2822 uses CER brands instead.</td></tr>
+    <tr><td class="k">Account balances, raw FI fields, MCC</td><td>Yodlee feeds 3/4/6 and their <code>ACCOUNT_ATTRIBUTES</code></td><td>These are the only raw Yodlee fields (MCC, status, balances).</td></tr>
+    <tr><td class="k">Official CE KPIs to compare against</td><td>CE TRANSACT_USA daily-signal shares</td><td>Vendor-built aggregates, with no transaction rows.</td></tr>
+    <tr><td class="k">Europe</td><td>Fable <code>*_TXN</code> per country; FR v3 rather than v2</td><td>This is the only European source. FR v2 ends on 31 Dec 2026.</td></tr>
+    <tr><td class="k">Long history before 2019</td><td>Prime Omega with a <code>consistent_shopper_2016</code>+ panel, or 279 PRIME (2015+)</td><td>Josh's view starts in 2019.</td></tr>
+  </tbody>
+</table>
+</div>
+<p><strong>Combining sources.</strong> Omega and Tau are separate panels, so their raw counts can be added. Their per-member rates should be weighted separately, because Tau has no panel. Never add 279 to 2822, Yodlee to Omega, or a ticker table to 279: each pair is a subset of the same panel.</p>
+
+<h2 id="suggestions">Suggestions for jjsinger and cwang</h2>
+<ul>
+  <li><strong>Move Muse's card source from the raw Yodlee feeds to Prime Omega.</strong> It contains 99% of today's agentic transactions plus about 44% more, it's a production share, and it puts Muse on the same base as the rest of the team. Use the full Omega population for counts and merchant mix, and Josh's panels for weighted rates. In September the panels' agentic rate (0.70 per million) matched the rest of Omega (0.68), but they hold only 262 events a month.</li>
+  <li><strong>Deploy the all-cardholder <code>CE_PRIME_OMEGA_TXNS</code> view (PR #2522).</strong> Descriptor-led work needs every cardholder, not just the consistent-shopper panels.</li>
+  <li><strong>Document that <code>MERCHDESC</code> works as a per-transaction description.</strong> Its column comment calls it a merchant description, which suggests 2822 can't support descriptor work. It can.</li>
+  <li><strong>Agree how to treat Tau.</strong> It adds about 440 agentic transactions a month and has no panel. The options are to report it as a separate series, to build a simple consistent-shopper panel for it, or to exclude it.</li>
+  <li><strong>Add date-pruning guidance to the view.</strong> Always filter <code>FILEDATE</code> together with <code>TRANS_DATE</code>, because the tables are unclustered and an unfiltered MIN/MAX doesn't finish.</li>
+  <li><strong>Retire the stale ticker schemas</strong> (DASH, META, TMUS, LAD, LMND, ROKU <code>TXNS</code>), and move <code>company_data</code> to the v2 weights.</li>
+  <li><strong>Rotate the Earnest S3 keys.</strong> They are in plaintext in a Notion page and in the sync-service configs.</li>
+</ul>
+
+<h2 id="gaps">Open questions</h2>
+<ul>
+  <li>What the non-Yodlee 60% of Omega is (other aggregators or banks?), and why some Yodlee card ids don't match Omega.</li>
+  <li>When Tau's history really starts (2013, 2023-03 or 2024-01?), and whether CE will provide a Tau panel. CE (Ben) owed a recap of Omega and Tau panel sizes after the 3 Aug call.</li>
+  <li>What Yodlee feeds 1–6 are, why 1 and 2 stopped, and what "PRIME_EX_TAU" and "201" mean. The reading "Prime sources excluding Tau" fits the overlap data, but nothing documents it.</li>
+  <li>The 2822 data dictionary (on SharePoint), and how the <code>aggregate_consistent_shopper_*_v2</code> panels and weights are built.</li>
+  <li>Whether the user-score exclusion in the 279→2822 validation SQL should apply to Josh's view.</li>
+  <li>Who builds <code>EARNEST.EAT</code>, <code>FIVE</code> and <code>ULTA</code> <code>TXNS</code>; no job was found.</li>
+</ul>
+
+<h2 id="method">Method and files</h2>
+<p>All files are in <code>exploration/card_datasets_inv/</code>:</p>
+<ul>
+  <li><code>card_datasets_inventory.ipynb</code> plus <code>results/inventory.csv</code> and <code>inventory.xlsx</code>: every table and view in the 18 reachable databases (3,404 objects), with date range, description column and December 2025 distinct transactions.</li>
+  <li><code>overlap_sample.py</code> and <code>overlap_analyse.py</code> → <code>results/overlap/</code>: the hashed one-day samples and the pairwise overlap matrices (<code>pairs.csv</code>).</li>
+  <li><code>merchdesc_test*.py</code> → <code>results/merchdesc_test.txt</code>: the agentic descriptor tests.</li>
+  <li><code>docs_collected.md</code>: the existing documentation, with sources (Notion, Slack, srs, sync-service and Snowflake comments), each claim tagged as stated, inferred or measured.</li>
+</ul>
+
+<footer>Prepared by the SRS data team. Measured figures are from 15–16 Oct 2026 and will drift as panels change.</footer>
+</main>
+</div>

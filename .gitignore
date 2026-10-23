@@ -2,6 +2,11 @@
 *.csv
 *.xlsx
 *.xls
+*.xlsm
+*.xlsb
+*.tsv
+*.zip
+~$*
 *.parquet
 *.feather
 *.pkl

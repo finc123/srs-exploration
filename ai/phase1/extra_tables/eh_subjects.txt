@@ -1,0 +1,75 @@
+                 MERCHANT_NAME            DOM                       LOCAL_PART                                                                       SUBJECT       N
+0                    Anthropic  anthropic.com               invoice+statements                                                    Your receipt from __ __ __  579969
+1                    Anthropic  anthropic.com               invoice+statements                                                                           NaN    2764
+2                    Anthropic  anthropic.com               invoice+statements                                                 __ Your receipt from __ __ __      21
+3                    Anthropic  anthropic.com               invoice+statements                                         [EXTERNAL] Your receipt from __ __ __      17
+4                    Anthropic  anthropic.com               invoice+statements                                       [EXTERNAL] - Your receipt from __ __ __      12
+5                    Anthropic  anthropic.com               invoice+statements                                         [External] Your receipt from __ __ __       7
+6                    Anthropic  anthropic.com               invoice+statements                                 [ External Email ] Your receipt from __ __ __       7
+7                    Anthropic  anthropic.com               invoice+statements                                              [Ext] Your receipt from __ __ __       5
+8                    Anthropic  anthropic.com  -,n1&3/:n7%t')+9(3z$'-r4r7z&,n"                                                       Welcome to the Pro plan       5
+9                    Anthropic  anthropic.com               invoice+statements                        [TO UNRECOGNIZED ADDRESS]:] Your receipt from __ __ __       5
+10                   Anthropic  anthropic.com  -,n1&3/:n4's4%:,t7,(+/;''"(-*w$                                                        Welcome to the __ plan       4
+11                   Anthropic  anthropic.com  -,n1&3/:n3**&&5$++2'z,wz14s$(*4                                                       Welcome to the Pro plan       3
+12                    Chat GPT     openai.com                          noreply                                                       ChatGPT - Your new plan  102135
+13                    Chat GPT     openai.com                          noreply                                               Your __ API account has been __   37960
+14                    Chat GPT     openai.com                          billing                                               Your __ API account has been __   13854
+15                    Chat GPT     openai.com                          noreply                                                                           NaN     549
+16                    Chat GPT     openai.com                          billing                                       [admin] Your __ API account has been __      10
+17                    Chat GPT     openai.com                          noreply                                            [External] ChatGPT - Your new plan       4
+18                    Chat GPT     openai.com                          noreply                                            [EXTERNAL] ChatGPT - Your new plan       4
+19                    Chat GPT     openai.com                          noreply                                                 __ __ API account has been __       2
+20                    Chat GPT     openai.com                          billing                                                                           NaN       2
+21                    Chat GPT     openai.com                          noreply                                                    __ ChatGPT - Your new plan       1
+22                    Chat GPT            NaN                              NaN                                                                           NaN       1
+23                    Chat GPT     openai.com                          noreply                                          [EXTERNAL] - ChatGPT - Your new plan       1
+24       Chat GPT Cancellation     openai.com                          noreply                                              ChatGPT - Your plan __ not renew   84915
+25       Chat GPT Cancellation     openai.com                          noreply      We’d love your feedback on why you canceled your ChatGPT Go subscription   11283
+26       Chat GPT Cancellation     openai.com                          noreply    We’d love your feedback on why you canceled your ChatGPT plus subscription   10399
+27       Chat GPT Cancellation     openai.com                          noreply    We’d love your feedback on why you canceled your ChatGPT Plus subscription   10157
+28       Chat GPT Cancellation     openai.com                          noreply      We’d love your feedback on why you canceled your ChatGPT go subscription    3244
+29       Chat GPT Cancellation     openai.com                          noreply     We’d love your feedback on why you canceled your ChatGPT Pro subscription     546
+30       Chat GPT Cancellation     openai.com                          noreply                                                                           NaN     360
+31       Chat GPT Cancellation     openai.com                          noreply     We’d love your feedback on why you canceled your ChatGPT pro subscription     284
+32       Chat GPT Cancellation     openai.com                          noreply    We’d love your feedback on why you canceled your ChatGPT Free subscription     178
+33       Chat GPT Cancellation     openai.com                          noreply    We’d love your feedback on why you canceled your ChatGPT free subscription     173
+34       Chat GPT Cancellation     openai.com                          noreply  We’d love your feedback on why you canceled your ChatGPT Pro __ subscription     101
+35       Chat GPT Cancellation     openai.com                          noreply                            [External Sender] ChatGPT - Your plan __ not renew       4
+36                      Cursor     cursor.com                               hi                                                                 Welcome to __    7774
+37                      Cursor     cursor.com                             team                                                                 Welcome to __     216
+38                      Cursor     cursor.com                               hi                                                          Welcome to __ Ultra!     184
+39                      Cursor     cursor.com                               hi                                                         Making the most of __      79
+40                      Cursor     cursor.com                               hi                                             Getting started on the Teams plan      16
+41                      Cursor     cursor.com                               hi                                                           Welcome to __ Team!       4
+42                      Cursor     cursor.com                               hi                                                                           NaN       2
+43                      Cursor     cursor.com                               hi                                                          [BULK] Welcome to __       1
+44                      Cursor     cursor.com                             team                                                                           NaN       1
+45               Perplexity AI  perplexity.ai                             team                                                                 Welcome to __   45421
+46               Perplexity AI  perplexity.ai                             team                                                                           NaN   16788
+47               Perplexity AI  perplexity.ai                             team                                                              Welcome to __ __     750
+48               Perplexity AI  perplexity.ai                             team                                                   Welcome to __ for Education     436
+49               Perplexity AI  perplexity.ai                             team                               [Action Required] Welcome to __ Enterprise Pro!     385
+50               Perplexity AI  perplexity.ai                             team                                                Welcome to __ API Organization      11
+51               Perplexity AI  perplexity.ai                             team                                                      [EXTERNAL] Welcome to __       1
+52               Perplexity AI            NaN                              NaN                                                                           NaN       1
+53               Perplexity AI  perplexity.ai                             team                                                          [BULK] Welcome to __       1
+54               Perplexity AI  perplexity.ai                             team                                                           [EXT] Welcome to __       1
+55               Perplexity AI  perplexity.ai                             team                                                           __ __ Welcome to __       1
+56               Perplexity AI  perplexity.ai                             team                                                        EXTERNAL Welcome to __       1
+57  Perplexity AI Cancellation  perplexity.ai                             team                                                   Your __ Pro trial has ended   11403
+58  Perplexity AI Cancellation  perplexity.ai                             team                                            Your __ Pro plan has been canceled    4030
+59  Perplexity AI Cancellation  perplexity.ai                             team                                    Your __ Pro subscription has been canceled    3669
+60  Perplexity AI Cancellation  perplexity.ai                             team                                       We've canceled your __ Pro subscription    2119
+61  Perplexity AI Cancellation  perplexity.ai                             team                                                                           NaN      81
+62                     Twitter          x.com                           notify                                                                           NaN    1733
+63                     Twitter          x.com                           notify                                     X Ads successfully processed your payment     466
+64                     Twitter          x.com                           notify                                                            You paid $10 to __      17
+65                     Twitter          x.com                           notify                                                You received $500 from X Money      13
+66                     Twitter          x.com                           notify                                                            You paid $15 to __      11
+67                     Twitter          x.com                           notify                                                  $4.87 transaction at X Money      11
+68                     Twitter          x.com                           notify                                                       You paid $10 to FanDuel      10
+69                     Twitter          x.com                           notify                                              You received $1,000 from X Money       9
+70                     Twitter          x.com                           notify                                                            You paid $20 to __       8
+71                     Twitter          x.com                           notify                                                            You paid $50 to __       7
+72                     Twitter          x.com                           notify                                                            You paid $25 to __       7
+73                     Twitter          x.com                           notify                                                       You paid $25 to FanDuel       6

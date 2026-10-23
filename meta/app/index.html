@@ -364,6 +364,8 @@ const BLOCKS = [
       const b = block("Agentic Checkout to Non-Stripe Merchants",
         "Muse, GrokBot and Instinct use Stripe Virtual Cards for merchants that do not accept Stripe as a payment processor. Cleveland Research noted that the majority of agentic spend from a card issuer was coming from Muse.");
       b.el.insertAdjacentHTML("beforeend", `<div class="grid2"><div class="chart"><canvas id="c_ag"></canvas></div><div class="chart"><canvas id="c_ag2"></canvas></div></div>
+        <div class="grid2" style="margin-top:16px"><div class="chart"><canvas id="c_ag3"></canvas></div><div class="chart"><canvas id="c_ag4"></canvas></div></div>
+        <p class="note">Mean $ per transaction = agentic purchase $ / agentic purchases (refunds excluded); the TR7D line is 7-day $ over 7-day count. A few large tickets (flights, hotels) move the daily mean, so read the TR7D line.</p>
         <div class="head" style="margin-top:16px"><h3 style="margin:0">Top merchants</h3><div id="t_merch_ctl"></div></div>
         <p class="note">Share of observed spend = the merchant's agentic $ over all agentic $ seen in the same period, so it is a share of observed agent spend, not of the merchant's sales.</p>
         <div class="scroll"><table id="t_merch"></table></div>
@@ -374,6 +376,10 @@ const BLOCKS = [
                            line("Per million", series(rows, "PER_MILLION_TR7D", {}, dates), C[0])]);
       draw("c_ag2", dates, [bar("Agentic txns", series(rows, "TXNS", {}, dates), C[1]),
                             line("Agentic txns", series(rows, "TXNS_TR7D", {}, dates), C[1])]);
+      draw("c_ag3", dates, [bar("Mean $ per txn", series(rows, "MEAN_SPEND", {}, dates), C[2]),
+                            line("Mean $ per txn", series(rows, "MEAN_SPEND_TR7D", {}, dates), C[2])]);
+      draw("c_ag4", dates, [bar("Agentic spend $", series(rows, "SPEND", {}, dates), C[3]),
+                            line("Agentic spend $", series(rows, "SPEND_TR7D", {}, dates), C[3])]);
       const merch = sections.agentic_merchants || [], sm = { Period: "Since launch" };
       const goMerch = () => {
         const m = merch.filter(r => r.PERIOD === sm.Period);

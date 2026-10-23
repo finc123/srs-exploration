@@ -1,0 +1,111 @@
+region       prov     channel  W  lapses  cancel_same  cancel_any  lapses_reliable  cancel_same_reliable  lapses_last12m  lag_last_to_cancel_p25  lag_last_to_cancel_p50  lag_last_to_cancel_p75  cancel_same_last12m
+    us    chatgpt       apple 43   95763        0.611       0.621            43807                 0.751           55644                    11.0                    15.0                    19.0                0.631
+    us    chatgpt google_play 41   17709        0.787       0.790             6113                 0.841           11372                     3.0                    15.0                    27.0                0.743
+    us     claude       apple 44    8538        0.634       0.635             4489                 0.756            7644                    12.0                    15.0                    20.0                0.631
+    us     claude      direct 42   32021        0.595       0.598            10589                 0.631           23824                     2.0                    13.0                    24.0                0.582
+    us     claude google_play 42    1526        0.818       0.822              650                 0.869            1312                     2.0                    13.0                    24.0                0.804
+    us     gemini       apple 44    2657        0.561       0.623             1415                 0.607            2224                    12.0                    15.0                    18.0                0.559
+    us     gemini google_play 40   30262        0.735       0.735             7144                 0.714           21373                     1.0                    19.0                    36.0                0.701
+    us       grok       apple 61    7619        0.719       0.719             4305                 0.777            5369                    12.0                    15.0                    18.0                0.756
+    us       grok google_play 89    1803        0.880       0.880              644                 0.918            1359                     1.0                     8.0                    24.0                0.868
+    us perplexity       apple 61    3110        0.732       0.795             1920                 0.800            2106                    12.0                    15.0                    20.0                0.771
+    us perplexity google_play 61     497        0.861       0.948              235                 0.902             292                     3.0                    13.0                    24.0                0.839
+    eu    chatgpt       apple 43   36283        0.008       0.014            16329                 0.010           19313                     2.0                     2.0                     3.0                0.011
+    eu    chatgpt google_play 42   12295        0.000       0.007             4132                 0.000            7448                     NaN                     NaN                     NaN                0.000
+    eu    chatgpt      paypal 60    3750        0.000       0.455             1205                 0.000            2760                     NaN                     NaN                     NaN                0.000
+    eu    chatgpt      stripe 43      39        0.000       0.077               15                 0.000              13                     NaN                     NaN                     NaN                0.000
+    eu     claude       apple 42    3298        0.000       0.000             1301                 0.000            3065                     NaN                     NaN                     NaN                0.000
+    eu     claude      direct 43    9963        0.000       0.000             3191                 0.000            8256                     NaN                     NaN                     NaN                0.000
+    eu     claude google_play 61     746        0.000       0.000              292                 0.000             651                     NaN                     NaN                     NaN                0.000
+    eu     claude       other 43      46        0.000       0.000               10                 0.000              42                     NaN                     NaN                     NaN                0.000
+    eu     claude      stripe 44    1151        0.000       0.000              381                 0.000            1151                     NaN                     NaN                     NaN                0.000
+    eu     gemini       apple 43    1536        0.000       0.000              713                 0.000            1406                     NaN                     NaN                     NaN                0.000
+    eu     gemini google_play 41   10024        0.000       0.000             2848                 0.000            8241                     NaN                     NaN                     NaN                0.000
+    eu     gemini      paypal 41     488        0.000       0.000              155                 0.000             421                     NaN                     NaN                     NaN                0.000
+    eu       grok       apple 91    1369        0.000       0.000              553                 0.000            1175                     NaN                     NaN                     NaN                0.000
+    eu       grok google_play 91     589        0.000       0.000              235                 0.000             508                     NaN                     NaN                     NaN                0.000
+    eu       grok      paypal 91      39        0.000       0.000               13                 0.000               3                     NaN                     NaN                     NaN                0.000
+    eu       grok      stripe 91     507        0.000       0.000              185                 0.000             364                     NaN                     NaN                     NaN                0.000
+    eu perplexity       apple 43     441        0.000       0.000              272                 0.000             237                     NaN                     NaN                     NaN                0.000
+    eu perplexity google_play 42     153        0.000       0.000               70                 0.000              68                     NaN                     NaN                     NaN                0.000
+region       prov     channel  cancels  had_pay_before  pay_within_W  pay_within_W_n  of_which_signup_email  of_which_continuing_renewal  share_cancels_continuing_no_signup  days_to_pay_p25  days_to_pay_p50  days_to_pay_p75
+    us    chatgpt       apple    98492           0.833         0.258           25460                  0.479                        0.193                               0.050             17.0             22.0             29.0
+    us    chatgpt      direct   141298           0.383         0.079           11229                  0.468                        0.000                               0.000              9.0             22.0             32.0
+    us    chatgpt google_play    26642           0.850         0.268            7133                  0.069                        0.446                               0.119             11.0             22.0             31.0
+    us     claude       apple     7074           0.878         0.254            1800                  0.321                        0.271                               0.069             15.0             20.0             27.0
+    us     claude      direct    30736           0.804         0.217            6666                  0.755                        0.117                               0.025             13.0             25.0             32.0
+    us     claude google_play     3064           0.807         0.305             934                  0.245                        0.385                               0.117              8.0             17.0             29.0
+    us     gemini       apple     3367           0.466         0.098             330                  0.579                        0.079                               0.008             15.0             20.0             27.0
+    us     gemini google_play   105229           0.453         0.154           16166                  0.601                        0.169                               0.026              5.0             15.0             30.0
+    us       grok       apple    13149           0.539         0.163            2140                  0.160                        0.224                               0.037             16.0             25.0             38.0
+    us       grok google_play    12173           0.298         0.166            2017                  0.003                        0.234                               0.039             12.0             29.0             48.0
+    us perplexity       apple     3430           0.732         0.103             354                  0.418                        0.229                               0.024             17.0             22.0             34.0
+    us perplexity      direct     9210           0.209         0.045             418                  0.490                        0.000                               0.000              6.0             15.0             30.0
+    us perplexity google_play      880           0.690         0.094              83                  0.325                        0.361                               0.034             14.0             26.0             36.5
+    eu    chatgpt       apple      462           0.985         0.357             165                  0.036                        0.127                               0.045              2.0              7.0             22.0
+    eu    chatgpt      direct    39169           0.468         0.047            1839                  0.124                        0.000                               0.000             17.0             27.0             34.0
+      prov     channel  is_start      n  marker  marker_same_ch region
+   chatgpt       apple     False 163467   0.026           0.025     us
+   chatgpt       apple      True 107581   0.586           0.585     us
+   chatgpt      direct     False   1356   1.000           1.000     us
+   chatgpt      direct      True 111161   1.000           1.000     us
+   chatgpt google_play     False  35332   0.002           0.001     us
+   chatgpt google_play      True  22875   0.001           0.001     us
+    claude       apple     False  10787   0.021           0.019     us
+    claude       apple      True  12865   0.685           0.684     us
+    claude      direct     False  73879   0.041           0.040     us
+    claude      direct      True  58472   0.854           0.854     us
+    claude google_play     False   2465   0.015           0.014     us
+    claude google_play      True   2440   0.005           0.005     us
+    gemini       apple     False   3147   0.037           0.019     us
+    gemini       apple      True   3594   0.449           0.399     us
+    gemini google_play     False  98567   0.043           0.002     us
+    gemini google_play      True  64252   0.318           0.005     us
+      grok       apple     False   5728   0.028           0.028     us
+      grok       apple      True   9186   0.318           0.318     us
+      grok google_play     False   1695   0.002           0.002     us
+      grok google_play      True   2973   0.005           0.005     us
+      muse       apple      True    183   0.831           0.831     us
+      muse google_play      True    103   0.000           0.000     us
+perplexity       apple     False   3011   0.018           0.012     us
+perplexity       apple      True   3734   0.697           0.674     us
+perplexity google_play     False    543   0.018           0.000     us
+perplexity google_play      True    551   0.483           0.000     us
+perplexity       other      True     30   0.200           0.000     us
+   chatgpt       apple     False 125941   0.001           0.000     eu
+   chatgpt       apple      True  51394   0.001           0.000     eu
+   chatgpt      direct     False   1010   1.000           1.000     eu
+   chatgpt      direct      True  48512   1.000           1.000     eu
+   chatgpt google_play     False  68367   0.000           0.000     eu
+   chatgpt google_play      True  20532   0.001           0.000     eu
+   chatgpt      paypal     False  24863   0.066           0.000     eu
+   chatgpt      paypal      True   4504   0.001           0.000     eu
+   chatgpt      stripe      True     35   0.086           0.086     eu
+    claude       apple     False   7296   0.000           0.000     eu
+    claude       apple      True   5731   0.000           0.000     eu
+    claude      direct     False  67544   0.000           0.000     eu
+    claude      direct      True  24716   0.000           0.000     eu
+    claude google_play     False   4119   0.000           0.000     eu
+    claude google_play      True   2195   0.000           0.000     eu
+    claude       other     False    127   0.000           0.000     eu
+    claude       other      True     84   0.000           0.000     eu
+    claude      paypal     False     57   0.000           0.000     eu
+    claude      paypal      True     34   0.000           0.000     eu
+    claude      stripe     False   9429   0.000           0.000     eu
+    claude      stripe      True   6017   0.000           0.000     eu
+    gemini       apple     False   3457   0.001           0.000     eu
+    gemini       apple      True   2570   0.004           0.000     eu
+    gemini google_play     False  79087   0.001           0.001     eu
+    gemini google_play      True  26299   0.013           0.013     eu
+    gemini      paypal     False   3156   0.001           0.000     eu
+    gemini      paypal      True   1252   0.005           0.000     eu
+      grok       apple     False   1549   0.000           0.000     eu
+      grok       apple      True   2359   0.001           0.000     eu
+      grok google_play     False   1313   0.005           0.005     eu
+      grok google_play      True   1362   0.126           0.126     eu
+      grok      stripe     False   1469   0.001           0.000     eu
+      grok      stripe      True   1044   0.001           0.000     eu
+perplexity       apple     False    868   0.013           0.000     eu
+perplexity       apple      True    579   0.268           0.000     eu
+perplexity google_play     False    335   0.012           0.000     eu
+perplexity google_play      True    199   0.327           0.000     eu

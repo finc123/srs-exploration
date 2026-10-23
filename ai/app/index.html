@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Consumer Subscriptions</title>
+<meta name="description" content="Consumer AI subscriptions (ChatGPT, Claude, Gemini, Grok, Perplexity, Muse) from e-receipts: subscribers, share, gross adds, churn, plan mix, launch ramps and switching, plus app and web usage. Refreshed daily by the ai_consumer workflow.">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #f7f7f5; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e3e2dd;
+    --accent: #2f5bd3; --c1: #2f5bd3; --c2: #d9822b; --c3: #2e9e6b; --c4: #a64ca6; --c5: #8a8a84; --c6: #1f8a9e; --warn: #b4541a;
+    --bar-alpha: 0.28;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #151514; --panel: #1f1f1d; --ink: #ecebe6; --muted: #a09f99; --line: #34332f;
+      --accent: #7b9cff; --c1: #7b9cff; --c2: #f0a65a; --c3: #5cc795; --c4: #d38bd3; --c5: #b9b8b1; --c6: #5ec4d6; --warn: #f09a62;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #151514; --panel: #1f1f1d; --ink: #ecebe6; --muted: #a09f99; --line: #34332f;
+    --accent: #7b9cff; --c1: #7b9cff; --c2: #f0a65a; --c3: #5cc795; --c4: #d38bd3; --c5: #b9b8b1; --c6: #5ec4d6; --warn: #f09a62;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  h2 { font-size: 17px; margin: 0; }
+  h3 { font-size: 15px; margin: 16px 0 6px; }
+  .sub { color: var(--muted); margin: 0 0 16px; }
+  .sub a { color: var(--accent); }
+  .fresh { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--muted); font-size: 12px; margin-bottom: 20px; }
+  .fresh b { color: var(--ink); font-weight: 600; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; margin-bottom: 24px; }
+  .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  .tile .lbl { color: var(--muted); font-size: 12px; }
+  .tile .val { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .tile .chg { font-size: 12px; font-variant-numeric: tabular-nums; }
+  .up { color: var(--c3); } .down { color: var(--warn); }
+  section.block { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  .head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+  .ctls { display: flex; flex-wrap: wrap; gap: 8px; }
+  .note { color: var(--muted); font-size: 12px; margin: 4px 0 10px; }
+  .empty { color: var(--muted); font-style: italic; padding: 24px 0; text-align: center; }
+  .ctl { display: flex; flex-wrap: wrap; gap: 6px; }
+  .ctl button { border: 1px solid var(--line); background: transparent; color: var(--ink); border-radius: 6px;
+                padding: 3px 9px; font: inherit; font-size: 12px; cursor: pointer; }
+  .ctl button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .chart { position: relative; height: 280px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid2 > div, .stack > div { min-width: 0; }
+  .stack { display: grid; grid-template-columns: 1fr; gap: 16px; }
+  .chead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px;
+           min-height: 26px; margin-bottom: 4px; color: var(--muted); font-size: 12px; font-weight: 600; }
+  code { font-size: 12px; overflow-wrap: anywhere; }
+  @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } .chart { height: 240px; } }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  td.n, th.n { text-align: right; }
+  .scroll { overflow-x: auto; }
+  details.meth { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; margin-bottom: 10px; }
+  details.meth summary { cursor: pointer; font-weight: 600; }
+  details.meth p { margin: 8px 0; }
+  .err { color: var(--warn); }
+</style>
+</head>
+<body>
+<main>
+  <h1>AI Consumer Subscriptions</h1>
+  <p class="sub">Consumer subscriptions to ChatGPT, Claude, Gemini, Grok, Perplexity and Muse from NIQ e-receipt sign-up and cancellation emails (US panel),
+    with app (SensorTower) and web (SimilarWeb) usage. Emails cover each provider's direct sender and the app stores, not every channel: each provider's coverage is listed under Methodology.
+    Faint bars are daily values; lines are the trailing 7-day mean (TR7D). Muse launch detail: <a href="../meta_muse/">Meta Muse</a>.</p>
+  <div class="fresh" id="fresh"></div>
+  <div class="tiles" id="tiles"></div>
+  <div id="blocks"></div>
+  <h2 style="margin:28px 0 10px">Methodology</h2>
+  <div id="coverage"></div>
+  <div id="methodology"></div>
+</main>
+<script>
+const SCHEMA_VERSION = 1;
+const DATA_KEY = "internet/ai_consumer/ai_consumer.json";
+const LOCAL = location.protocol === "file:" || ["localhost", "127.0.0.1"].includes(location.hostname);
+// Local preview: a sibling ai_consumer.json if one is served, else the bucket key through the S3 preview proxy.
+const JSON_URLS = LOCAL ? ["ai_consumer.json", "http://127.0.0.1:8765/" + DATA_KEY] : [DATA_KEY.split("/").pop()];
+
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const COLORS = () => [css("--c1"), css("--c2"), css("--c3"), css("--c4"), css("--c5"), css("--c6")];
+const fmt = (v, d = 0, min = d) => v == null ? "–" : Number(v).toLocaleString(undefined, { maximumFractionDigits: d, minimumFractionDigits: min });
+const fmtBig = v => v == null ? "–" : Math.abs(v) >= 1e6 ? fmt(v / 1e6, 2) + "M" : Math.abs(v) >= 1e4 ? fmt(v / 1e3, 0) + "k" : fmt(v, Math.abs(v) < 10 ? 2 : 0, 0);
+const pct = v => v == null ? "–" : (v >= 0 ? "+" : "") + fmt(v * 100, 1) + "%";
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const alpha = (hex, a) => { const h = hex.replace("#", ""); const n = parseInt(h.length === 3 ? h.replace(/./g, "$&$&") : h, 16);
+  return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; };
+
+// Provider order fixes each provider's colour on every chart (receipts use ids, apps use names).
+const PROV = ["chatgpt", "claude", "gemini", "grok", "perplexity", "muse"];
+const APPS = ["ChatGPT", "Claude", "Gemini", "Grok", "Perplexity", "Muse"];
+let NAMES = Object.fromEntries(PROV.map((p, i) => [p, APPS[i]]));
+const colorOf = k => COLORS()[Math.max(0, PROV.indexOf(k) >= 0 ? PROV.indexOf(k) : APPS.indexOf(k))];
+const REGIONS = { US: "us", Europe: "eu", UK: "uk", DE: "de", FR: "fr", ES: "es", IT: "it" };
+
+const charts = {};
+function draw(id, labels, datasets, opts = {}) {
+  const old = charts[id], hidden = new Set();
+  if (old) old.data.datasets.forEach((d, i) => { if (!old.isDatasetVisible(i)) hidden.add(d.label); });
+  datasets = datasets.map(d => hidden.has(d.label) ? { ...d, hidden: true } : d);
+  old?.destroy();
+  const grid = css("--line"), ink = css("--muted");
+  const tick = v => opts.share || opts.ratio ? fmt(v * 100, 0) + "%" : fmtBig(v);
+  charts[id] = new Chart(document.getElementById(id), {
+    data: { labels, datasets },
+    options: {
+      maintainAspectRatio: false, animation: false, interaction: { mode: "index", intersect: false },
+      plugins: { legend: { labels: { color: ink, boxWidth: 12 } },
+                 tooltip: { filter: opts.skipNull ? c => c.parsed.y != null : undefined,
+                            callbacks: { label: opts.label || (c => `${c.dataset.label}: ${opts.share || opts.ratio ? fmt(c.parsed.y * 100, 1) + "%" : fmtBig(c.parsed.y)}`),
+                                         footer: opts.footer } } },
+      scales: {
+        x: { ticks: { color: ink, maxTicksLimit: 10, maxRotation: 0 }, grid: { display: false }, stacked: !!opts.stacked,
+             ...(opts.offset === undefined ? {} : { offset: opts.offset }), title: { display: !!opts.xTitle, text: opts.xTitle, color: ink } },
+        y: { type: opts.log ? "logarithmic" : "linear", afterFit: s => { s.width = 64; }, ticks: { color: ink, callback: tick },
+             grid: { color: grid }, beginAtZero: !opts.log, stacked: !!opts.stacked, max: opts.share ? 1 : undefined },
+      },
+    },
+  });
+}
+
+// Sum `col` over rows matching `where`, per index column, on the given labels.
+function series(rows, col, where, labels, idx = "DATE") {
+  const m = new Map();
+  for (const r of rows) {
+    if (!Object.entries(where).every(([k, v]) => v === "All" || r[k] === v)) continue;
+    if (r[col] == null) { if (!m.has(r[idx])) m.set(r[idx], null); continue; }
+    m.set(r[idx], (m.get(r[idx]) ?? 0) + r[col]);
+  }
+  return labels.map(d => m.has(d) ? m.get(d) : null);
+}
+const uniq = (rows, k) => [...new Set(rows.map(r => r[k]))].sort();
+const sum = a => a.reduce((t, v) => t + (v ?? 0), 0);
+const bar = (label, data, color) => ({ type: "bar", label: label + " (daily)", data, backgroundColor: alpha(color, +css("--bar-alpha") || 0.28), borderWidth: 0 });
+const line = (label, data, color, w = 2) => ({ type: "line", label, data, borderColor: color, backgroundColor: color, pointRadius: 0, borderWidth: w, spanGaps: false, stack: "line:" + label });
+
+// One shared calendar for the daily charts; "Last 90 days" slices its tail.
+let CAL = [];
+function calendar(p) {
+  let start = "9999", end = "0000";
+  for (const k of ["subs_daily_adds", "app_usage_daily", "web_traffic_daily"])
+    for (const r of p.sections[k] || []) { if (r.DATE < start) start = r.DATE; if (r.DATE > end) end = r.DATE; }
+  const out = [];
+  if (start > end) return out;
+  for (let d = new Date(start + "T00:00:00Z"); d.toISOString().slice(0, 10) <= end; d.setUTCDate(d.getUTCDate() + 1)) out.push(d.toISOString().slice(0, 10));
+  return out;
+}
+const range = r => r === "Last 90 days" ? CAL.slice(-90) : CAL;
+
+function buttons(host, name, options, state, onChange) {
+  const wrap = document.createElement("div"); wrap.className = "ctl"; wrap.setAttribute("role", "group"); wrap.setAttribute("aria-label", name);
+  for (const o of options) {
+    const b = document.createElement("button"); b.textContent = o; b.setAttribute("aria-pressed", String(state[name] === o));
+    b.onclick = () => { state[name] = o; wrap.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", String(x === b))); onChange(); };
+    wrap.appendChild(b);
+  }
+  host.appendChild(wrap);
+}
+function block(title, note) {
+  const s = document.createElement("section"); s.className = "block";
+  s.innerHTML = `<div class="head"><h2>${esc(title)}</h2><div class="ctls"></div></div><p class="note">${note}</p>`;
+  document.getElementById("blocks").appendChild(s);
+  return { el: s, ctls: s.querySelector(".ctls") };
+}
+const empty = (b, what) => b.el.insertAdjacentHTML("beforeend", `<p class="empty">${esc(what)} not yet available: the subscriber model is being built.</p>`);
+const col = (id, title) => `<div><div class="chead"><span>${esc(title)}</span><div class="ctl-host" id="${id}_ctl"></div></div><div class="chart"><canvas id="${id}"></canvas></div></div>`;
+
+const BLOCKS = [
+  { key: "channel_flows", render(rows) {
+      const b = block("Gross adds, churn and net adds from sign-up and cancellation emails (US)",
+        "Gross adds = first sign-up or paid subscription email in a series; churn = cancellation emails; net adds = gross adds − churn. No lapse modelling. " +
+        "Combined = the provider's channels deduped when the same mailbox shows the same event in two channels within 45 days: direct + Google Play + iTunes, " +
+        "except Grok and Perplexity (Google Play + iTunes: Grok has no direct sender; Perplexity direct is mostly free promotional sign-ups). " +
+        "Plans (Combined only): the tier the emails name; a change of plan within a subscription is a switch (out of the old plan, into the new), not churn plus an add. Muse Code is Muse's direct plan. Panel counts. The last month is month-to-date (labelled MTD) and rises as the month fills.");
+      if (!rows.length) return empty(b, "Email-based flows");
+      b.el.insertAdjacentHTML("beforeend", `<div class="stack">${col("c_cf_flow", "Monthly gross adds, churn and net adds")}${col("c_cf_cum", "Cumulative net adds since January 2025 (Combined)")}</div>`);
+      const SRC = { "Combined": "combined", "Direct": "direct", "Google Play": "google_play", "iTunes": "itunes" };
+      const st = { Provider: "chatgpt", Source: "Combined", Plan: "All plans" }, months = uniq(rows, "MONTH"), C = COLORS();
+      const mtd = new Set(rows.filter(r => r.PARTIAL).map(r => r.MONTH));
+      const xl = months.map(m => mtd.has(m) ? m.slice(0, 7) + " (MTD)" : m.slice(0, 7));
+      const planHost = document.createElement("div"); b.ctls.appendChild(planHost);
+      const plansOf = p => uniq(rows.filter(r => r.PROVIDER === p && r.CHANNEL === "combined" && r.PLAN !== "all"), "PLAN")
+        .sort((x, y) => (x === "Unspecified") - (y === "Unspecified"));
+      const cum = s => { let t = 0; return s.map(v => v == null ? null : (t += v)); };
+      const go = () => {
+        const byPlan = st.Plan !== "All plans", ch = byPlan ? "combined" : SRC[st.Source];
+        const w = { PROVIDER: st.Provider, CHANNEL: ch, PLAN: byPlan ? st.Plan : "all" };
+        const has = rows.some(r => r.PROVIDER === st.Provider && r.CHANNEL === ch && r.PLAN === w.PLAN);
+        const neg = s => s.map(v => v == null ? null : -v);
+        const sets = !has ? [] : [
+          { ...bar("Gross adds", series(rows, "GROSS_ADDS", w, months, "MONTH"), C[2]), label: "Gross adds", stack: "d" },
+          ...(byPlan ? [{ ...bar("Switched in", series(rows, "SWITCH_IN", w, months, "MONTH"), C[5]), label: "Switched in", stack: "d" }] : []),
+          { ...bar("Churn", neg(series(rows, "CHURN", w, months, "MONTH")), C[3]), label: "Churn", stack: "d" },
+          ...(byPlan ? [{ ...bar("Switched out", neg(series(rows, "SWITCH_OUT", w, months, "MONTH")), C[4]), label: "Switched out", stack: "d" }] : []),
+          line("Net adds", series(rows, "NET_ADDS", w, months, "MONTH"), css("--ink"), 2.5),
+        ];
+        draw("c_cf_flow", xl, sets, { stacked: true, label: c => `${c.dataset.label}: ${fmtBig(c.dataset.type === "bar" ? Math.abs(c.parsed.y) : c.parsed.y)}` });
+        const inc = rows.find(r => r.PROVIDER === st.Provider && r.CHANNEL === ch);
+        document.getElementById("c_cf_flow_note").textContent = !has ? `${NAMES[st.Provider]} has no ${st.Source} sender.`
+          : byPlan && st.Source !== "Combined" ? "Plans are shown for the Combined series only."
+          : !inc.IN_COMBINED ? `${st.Source} is shown for reference but is not part of ${NAMES[st.Provider]} Combined.` : "";
+        if (byPlan) {
+          draw("c_cf_cum", xl, plansOf(st.Provider).map((pl, i) =>
+            line(pl, cum(series(rows, "NET_ADDS", { PROVIDER: st.Provider, CHANNEL: "combined", PLAN: pl }, months, "MONTH")), C[i % 6], pl === st.Plan ? 3 : 1.5)));
+          document.querySelector("#c_cf_cum").closest("div").previousElementSibling.querySelector("span").textContent = `Cumulative net adds since January 2025 by plan (${NAMES[st.Provider]}, Combined)`;
+        } else {
+          draw("c_cf_cum", xl, PROV.filter(p => rows.some(r => r.PROVIDER === p)).map(p =>
+            line(NAMES[p], cum(series(rows, "NET_ADDS", { PROVIDER: p, CHANNEL: "combined", PLAN: "all" }, months, "MONTH")), colorOf(p), p === st.Provider ? 3 : 1.5)));
+          document.querySelector("#c_cf_cum").closest("div").previousElementSibling.querySelector("span").textContent = "Cumulative net adds since January 2025 (Combined)";
+        }
+      };
+      const planButtons = () => { planHost.innerHTML = ""; if (!plansOf(st.Provider).includes(st.Plan)) st.Plan = "All plans";
+        buttons(planHost, "Plan", ["All plans", ...plansOf(st.Provider)], st, go); };
+      buttons(b.ctls, "Provider", PROV, st, () => { planButtons(); go(); });
+      b.ctls.appendChild(planHost); planButtons();
+      buttons(document.getElementById("c_cf_flow_ctl"), "Source", Object.keys(SRC), st, go);
+      document.getElementById("c_cf_flow").parentElement.insertAdjacentHTML("afterend", `<p class="note" id="c_cf_flow_note"></p>`);
+      go();
+  } },
+  { key: "channel_flows", render(rows) {
+      const b = block("Share across providers: subscribers, gross adds and net adds (US, emails)",
+        "Metric: Subscribers = each provider's Combined net adds summed from January 2025, with no opening stock (subscribers added since then, not total subscribers); " +
+        "Gross adds and Net adds = that month's Combined figures. Share = a provider's value over the sum across providers that month. " +
+        "For Subscribers and Net adds, share is taken over providers with a positive value: a negative value (e.g. Grok, whose store cancellation emails include free-trial cancellations) shows in Level but not in Share. " +
+        "The last month is month-to-date (MTD).");
+      const rs = rows.filter(r => r.CHANNEL === "combined" && r.PLAN === "all");
+      if (!rs.length) return empty(b, "Subscribers");
+      b.el.insertAdjacentHTML("beforeend", `<div class="chart" style="height:320px"><canvas id="c_subs"></canvas></div>`);
+      const st = { Metric: "Subscribers", View: "Share" }, months = uniq(rs, "MONTH"), mtd = new Set(rs.filter(r => r.PARTIAL).map(r => r.MONTH));
+      const xl = months.map(m => mtd.has(m) ? m.slice(0, 7) + " (MTD)" : m.slice(0, 7));
+      const cum = s => { let t = 0; return s.map(v => (t += v ?? 0)); };
+      const go = () => {
+        const provs = PROV.filter(p => rs.some(r => r.PROVIDER === p));
+        const raw = p => series(rs, st.Metric === "Gross adds" ? "GROSS_ADDS" : "NET_ADDS", { PROVIDER: p }, months, "MONTH");
+        const lvl = provs.map(p => st.Metric === "Subscribers" ? cum(raw(p)) : raw(p).map(v => v ?? 0));
+        const pos = months.map((_, j) => sum(lvl.map(s => Math.max(0, s[j]))));
+        const shr = lvl.map(s => s.map((v, j) => pos[j] ? Math.max(0, v) / pos[j] : null));
+        draw("c_subs", xl, provs.map((p, i) => ({ type: "bar", label: NAMES[p], data: st.View === "Share" ? shr[i] : lvl[i], stack: "s", borderWidth: 0,
+                                                   backgroundColor: alpha(colorOf(p), 0.7) })), {
+          stacked: true, share: st.View === "Share",
+          label: x => `${x.dataset.label}: ${fmtBig(lvl[x.datasetIndex][x.dataIndex])}` + (shr[x.datasetIndex][x.dataIndex] == null ? "" : ` (${fmt(100 * shr[x.datasetIndex][x.dataIndex], 1)}%)`),
+          footer: items => items.length ? `Total${st.Metric === "Gross adds" ? "" : " (providers with a positive value)"}: ${fmtBig(pos[items[0].dataIndex])}` : "",
+        });
+      };
+      buttons(b.ctls, "Metric", ["Subscribers", "Gross adds", "Net adds"], st, go);
+      buttons(b.ctls, "View", ["Share", "Level"], st, go); go();
+  } },
+  { key: "channel_flows", render(rows) {
+      const b = block("Plan mix: net subscribers added since January 2025 by plan (US, emails)",
+        "Combined net adds by plan (gross adds + switches in − cancellations − switches out) summed from January 2025, for one provider. " +
+        "Share is over plans with a positive total; Unspecified (cancellations that name no plan, with no earlier email) and any negative plan show in Level only. The last month is month-to-date.");
+      const rs = rows.filter(r => r.CHANNEL === "combined" && r.PLAN !== "all");
+      if (!rs.length) return empty(b, "Plan mix");
+      b.el.insertAdjacentHTML("beforeend", `<div class="chart" style="height:300px"><canvas id="c_plan"></canvas></div>`);
+      const st = { Provider: "chatgpt", View: "Share" }, months = uniq(rs, "MONTH"), C = COLORS(), mtd = new Set(rs.filter(r => r.PARTIAL).map(r => r.MONTH));
+      const xl = months.map(m => mtd.has(m) ? m.slice(0, 7) + " (MTD)" : m.slice(0, 7));
+      const cum = s => { let t = 0; return s.map(v => (t += v ?? 0)); };
+      const go = () => {
+        const plans = uniq(rs.filter(r => r.PROVIDER === st.Provider), "PLAN").sort((x, y) => (x === "Unspecified") - (y === "Unspecified"));
+        const lvl = plans.map(pl => cum(series(rs, "NET_ADDS", { PROVIDER: st.Provider, PLAN: pl }, months, "MONTH")));
+        const pos = months.map((_, j) => sum(lvl.map((s, i) => plans[i] === "Unspecified" ? 0 : Math.max(0, s[j]))));
+        const shr = lvl.map((s, i) => s.map((v, j) => plans[i] === "Unspecified" || !pos[j] ? null : Math.max(0, v) / pos[j]));
+        draw("c_plan", xl, plans.map((pl, i) => ({ type: "bar", label: pl, data: st.View === "Share" ? shr[i] : lvl[i], stack: "s", borderWidth: 0,
+                                                    backgroundColor: alpha(pl === "Unspecified" ? css("--c5") : C[i % 6], 0.75) })), {
+          stacked: true, share: st.View === "Share",
+          label: x => `${x.dataset.label}: ${fmtBig(lvl[x.datasetIndex][x.dataIndex])}` + (shr[x.datasetIndex][x.dataIndex] == null ? "" : ` (${fmt(100 * shr[x.datasetIndex][x.dataIndex], 1)}%)`),
+        });
+      };
+      buttons(b.ctls, "Provider", PROV, st, go); buttons(b.ctls, "View", ["Share", "Level"], st, go); go();
+  } },
+  { key: "app_usage_daily", render(rows) {
+      const b = block("App usage share (SensorTower)",
+        "Stacked daily values across the six assistants' official apps (iPhone + Android, matched by SensorTower product key): bar height is the total, segments are each app. A day is shown only when every launched app has a value. Switch View to Share for the 100% split.");
+      b.el.insertAdjacentHTML("beforeend", `<div class="chart" style="height:320px"><canvas id="c_share"></canvas></div>`);
+      const st = { Metric: "DAU", Country: "US", View: "Share", Range: "All" }, apps = APPS;
+      const go = () => {
+        const m = st.Metric === "DAU" ? "DAU" : "DOWNLOADS", dates = range(st.Range);
+        const raw = apps.map(a => series(rows, m, { APP: a, COUNTRY: st.Country }, dates));
+        const keep = dates.map((_, j) => apps.every((a, i) => raw[i][j] != null));
+        const lvl = raw.map(s => s.map((v, j) => keep[j] ? v ?? 0 : null));
+        const tot = dates.map((_, j) => keep[j] ? sum(lvl.map(s => s[j])) : null);
+        const shr = lvl.map(s => s.map((v, j) => tot[j] ? v / tot[j] : null));
+        draw("c_share", dates, apps.map((a, i) => ({ type: "bar", label: a, data: st.View === "Share" ? shr[i] : lvl[i], stack: "s", borderWidth: 0,
+                                                     backgroundColor: alpha(colorOf(a), 0.7) })), {
+          stacked: true, share: st.View === "Share",
+          label: c => `${c.dataset.label}: ${fmtBig(lvl[c.datasetIndex][c.dataIndex])} (${fmt(100 * shr[c.datasetIndex][c.dataIndex], 1)}%)`,
+          footer: items => items.length ? `Total: ${fmtBig(tot[items[0].dataIndex])}` : "",
+        });
+      };
+      buttons(b.ctls, "Metric", ["DAU", "Downloads"], st, go); buttons(b.ctls, "Country", ["US", "WW"], st, go);
+      buttons(b.ctls, "View", ["Share", "Level"], st, go); buttons(b.ctls, "Range", ["All", "Last 90 days"], st, go); go();
+  } },
+  { key: "app_launch", render(rows) {
+      const b = block("App launch benchmark: downloads and DAU by day since launch",
+        "SensorTower downloads and DAU from each app's day 0 (first day with downloads; Muse: public launch 2026-09-08). " +
+        "Retention proxy = DAU / cumulative downloads on the same day: not cohort retention, but comparable across apps at the same day since launch. Use Log scale to compare small and large launches.");
+      b.el.insertAdjacentHTML("beforeend", `<div class="chart" style="height:340px"><canvas id="c_bench"></canvas></div>`);
+      const st = { Country: "US", Metric: "Cumulative downloads", Scale: "Log" };
+      const M = { "Cumulative downloads": "CUM_DOWNLOADS", "Downloads TR7D": "DOWNLOADS_TR7D", "DAU": "DAU", "Retention proxy": "RETENTION" };
+      const go = () => {
+        const rs = rows.filter(r => r.COUNTRY === st.Country), log = st.Scale === "Log", m = M[st.Metric];
+        const labels = Array.from({ length: Math.max(0, ...rs.map(r => r.DAY_N)) + 1 }, (_, i) => i);
+        draw("c_bench", labels, APPS.filter(a => rs.some(r => r.APP === a)).map(a => {
+          const data = labels.map(() => null);
+          for (const r of rs) if (r.APP === a && r[m] != null && (!log || r[m] > 0)) data[r.DAY_N] = r[m];
+          return { ...line(a, data, colorOf(a), a === "Muse" ? 3.5 : 1.5), spanGaps: true, order: a === "Muse" ? 0 : 1 };
+        }), { log, ratio: m === "RETENTION", xTitle: "Days since launch" });
+      };
+      buttons(b.ctls, "Country", ["US", "WW"], st, go); buttons(b.ctls, "Metric", Object.keys(M), st, go);
+      buttons(b.ctls, "Scale", ["Linear", "Log"], st, go); go();
+  } },
+  { key: "time_spent", render(rows) {
+      const b = block("Engagement: app time spent (SensorTower)",
+        "Minutes per session = minutes / sessions; minutes per DAU = minutes / daily active users. Lines are 7-day ratios (7-day minutes over 7-day sessions or DAU). " +
+        "Time-spent data arrives about a week after DAU, so the last-90-days view ends earlier than the daily charts.");
+      b.el.insertAdjacentHTML("beforeend", `<div class="chart" style="height:320px"><canvas id="c_time"></canvas></div>`);
+      const st = { Country: "US", Metric: "Minutes per DAU", View: "Last 90 days" };
+      const M = { "Minutes per session": "MIN_PER_SESSION", "Minutes per DAU": "MIN_PER_DAU" };
+      const go = () => {
+        const m = M[st.Metric], launch = st.View === "Days since launch";
+        const rs = rows.filter(r => r.COUNTRY === st.Country && r.BENCH_WINDOW === (launch ? "launch" : "recent"));
+        const labels = launch ? Array.from({ length: Math.max(0, ...rs.map(r => r.DAY_N)) + 1 }, (_, i) => i)
+                              : uniq(rs, "DATE").slice(-90);
+        const at = new Map(labels.map((l, i) => [l, i]));
+        draw("c_time", labels, APPS.filter(a => rs.some(r => r.APP === a && r[m + "_TR7D"] != null)).map(a => {
+          const data = labels.map(() => null);
+          for (const r of rs) if (r.APP === a) { const i = at.get(launch ? r.DAY_N : r.DATE); if (i != null) data[i] = r[m + "_TR7D"]; }
+          return line(a, data, colorOf(a), a === "Muse" ? 3.5 : 1.5);
+        }), { skipNull: true, xTitle: launch ? "Days since launch" : undefined, label: c => `${c.dataset.label}: ${fmt(c.parsed.y, 1, 1)} min (TR7D)` });
+      };
+      buttons(b.ctls, "Country", ["US", "WW"], st, go); buttons(b.ctls, "Metric", Object.keys(M), st, go);
+      buttons(b.ctls, "View", ["Last 90 days", "Days since launch"], st, go); go();
+  } },
+  { key: "web_traffic_daily", render(rows) {
+      const b = block("Web traffic (SimilarWeb)",
+        "Daily visits to each provider's web app (desktop + mobile web, subdomains included) and, where SimilarWeb has visit duration, 7-day minutes per visit. " +
+        "Visit duration exists for muse.ai, and for chatgpt.com and claude.ai from 2026-10-12. Muse starts at launch.");
+      b.el.insertAdjacentHTML("beforeend", `<div class="stack">${col("c_web", "Visits")}${col("c_webmin", "Minutes per visit (TR7D)")}</div>`);
+      const st = { Country: "WW", View: "Lines", Range: "All" };
+      const go = () => {
+        const dates = range(st.Range), apps = APPS.filter(a => rows.some(r => r.APP === a));
+        if (st.View === "Lines") draw("c_web", dates, apps.map(a => line(a, series(rows, "VISITS_TR7D", { APP: a, COUNTRY: st.Country }, dates), colorOf(a), a === "Muse" ? 3 : 1.5)), { offset: true, log: true });
+        else {
+          const raw = apps.map(a => series(rows, "VISITS_TR7D", { APP: a, COUNTRY: st.Country }, dates));
+          const tot = dates.map((_, j) => raw.every(s => s[j] != null || apps[raw.indexOf(s)] === "Muse") ? sum(raw.map(s => s[j])) : null);
+          draw("c_web", dates, apps.map((a, i) => ({ type: "bar", label: a, stack: "s", borderWidth: 0, backgroundColor: alpha(colorOf(a), 0.7),
+                                                     data: raw[i].map((v, j) => tot[j] ? (v ?? 0) / tot[j] : null) })), { stacked: true, share: true });
+        }
+        const withMin = apps.filter(a => rows.some(r => r.APP === a && r.COUNTRY === st.Country && r.MIN_PER_VISIT_TR7D != null));
+        draw("c_webmin", dates, withMin.map(a => line(a, series(rows, "MIN_PER_VISIT_TR7D", { APP: a, COUNTRY: st.Country }, dates), colorOf(a))),
+             { skipNull: true, offset: true, label: c => `${c.dataset.label}: ${fmt(c.parsed.y, 1, 1)} min per visit` });
+      };
+      buttons(b.ctls, "Country", ["WW", "US"], st, go); buttons(b.ctls, "View", ["Lines", "Share"], st, go);
+      buttons(b.ctls, "Range", ["All", "Last 90 days"], st, go); go();
+  } },
+];
+
+function renderTiles(summary) {
+  document.getElementById("tiles").innerHTML = summary.map(s => `<div class="tile">
+    <div class="lbl">${esc(s.LABEL)}${s.PERIOD === "day" ? " (TR7D)" : ""}</div>
+    <div class="val">${s.VALUE == null ? "–" : s.KIND === "share" || /share/i.test(s.LABEL) ? fmt(100 * s.VALUE, 1) + "%" : fmtBig(s.VALUE)}</div>
+    <div class="chg ${s.CHANGE == null ? "" : s.CHANGE >= 0 ? "up" : "down"}">${s.VALUE == null ? "not yet available" : `${pct(s.CHANGE)} ${s.PERIOD === "day" ? "w/w" : "m/m"} · ${esc(s.AS_OF ?? "")}`}</div></div>`).join("");
+}
+function renderCoverage(providers) {
+  document.getElementById("coverage").innerHTML = `<details class="meth" open><summary>What receipts can see, by provider</summary>
+    <div class="scroll"><table><tr><th>Provider</th><th>Channels covered</th></tr>${providers.map(p => `<tr><td>${esc(p.NAME)}</td><td>${esc(p.COVERAGE)}</td></tr>`).join("")}</table></div></details>`;
+}
+function renderMethodology(meth) {
+  document.getElementById("methodology").innerHTML = meth.map(m => `<details class="meth"><summary>${esc(m.TITLE)}</summary>
+    <p><b>Source.</b> ${esc(m.SOURCE)}</p>
+    <div class="scroll"><table><tr><th>Rule</th><th>Why</th></tr>${m.FILTERS.map(f => `<tr><td>${esc(f.RULE)}</td><td>${esc(f.WHY)}</td></tr>`).join("")}</table></div>
+    <p><b>Deduplication.</b> ${esc(m.DEDUPE)}</p><p><b>Measure.</b> ${esc(m.MEASURE)}</p><p><b>Lag.</b> ${esc(m.LAG)}</p></details>`).join("");
+}
+
+async function load() {
+  for (const u of JSON_URLS) {
+    try { const r = await fetch(u, { cache: "no-store" }); if (r.ok) return await r.json(); } catch (e) { /* try next */ }
+  }
+  throw new Error("could not load " + JSON_URLS.join(" or "));
+}
+
+load().then(p => {
+  if (p.schema_version > SCHEMA_VERSION) {
+    document.getElementById("blocks").innerHTML = `<p class="err">This report needs a newer page (data schema ${p.schema_version}).</p>`; return;
+  }
+  if (p.providers) NAMES = Object.fromEntries(p.providers.map(x => [x.ID, x.NAME]));
+  document.getElementById("fresh").innerHTML = p.freshness.map(f => `<span>${esc(f.DATASET)} through <b>${esc(f.MAX_DATE ?? "–")}</b></span>`).join("") +
+    `<span>Built ${esc(p.generated_at.slice(0, 16).replace("T", " "))} UTC</span>`;
+  renderTiles(p.summary);
+  CAL = calendar(p);
+  for (const b of BLOCKS) if (p.sections[b.key]) {
+    try { b.render(p.sections[b.key], p.sections, p); }
+    catch (e) { document.getElementById("blocks").insertAdjacentHTML("beforeend", `<p class="err">${esc(b.key)}: ${esc(e.message)}</p>`); }
+  }
+  renderCoverage(p.providers || []);
+  renderMethodology(p.methodology);
+}).catch(e => { document.getElementById("blocks").innerHTML = `<p class="err">${esc(e.message)}</p>`; });
+</script>
+</body>
+</html>

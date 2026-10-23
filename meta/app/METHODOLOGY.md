@@ -8,7 +8,7 @@ Muse launched on 2026-09-08. Card and e-receipt windows start 2026-08-01 to give
 
 **Why two sources for subscriptions?** They see different halves of the market: card panels see web sign-ups billed directly by Meta (`METAPAY META.COM`), but Apple card descriptors carry no app name. E-receipts see App Store and Google Play subscriptions by name, but Meta's own web billing sends no receipt the panel captures. Neither is double-counted against the other.
 
-Complete-through dates for this build: cards 2026-10-10, e-receipts 2026-10-13.
+Complete-through dates for this build: cards 2026-10-16, e-receipts 2026-10-19.
 
 ## Launch benchmark: US downloads and DAU by day since launch (SensorTower)
 
@@ -221,18 +221,20 @@ Complete-through dates for this build: cards 2026-10-10, e-receipts 2026-10-13.
 
 `sections.agentic_daily`
 
-**Source.** Same card & bank set as Muse web: Yodlee feeds 3, 4 and 6. Feed 4 bank has had no agentic rows to date. 279 PRIME_TAU is left out of v1: its members do not overlap Yodlee, but it is a ~12.5M-transaction/day panel that surfaces only ~3 agentic descriptors a day (about 10% on top of Yodlee), and pooling it would make the per-million rate track 279's panel size rather than agentic adoption.
+**Source.** Prime Omega (SHARE_CE_PRIME_ENRICHED_OMEGA_2822.PRIME_OMEGA TRANS_V1_0 joined to MID_V1_0 for the descriptor), all cardlinks rather than the 2022 consistent-shopper panel, which holds only ~15% of agentic rows. Omega replaced Yodlee feeds 3/4/6 on 2026-10-19: it is a superset (97% of Yodlee agentic transactions have an Omega transaction of the same amount within 3 days) with 1.45x the agentic volume. Web Muse stays on Yodlee.
 
 **Filters.**
 
 | Rule | Why |
 |---|---|
 | Description contains LINKAGNT* | Stripe Link's agent-wallet descriptor ('LINKAGNT* <merchant> WWW.LINK.COM CA'), used until 2026-09-23. |
-| Or LINK* followed by a space, anchored on WWW.LINK.CO or SOUTH SAN FRA | From 09-23/24 Stripe shortened the descriptor to 'LINK* <merchant>'. Bare LINK* also matches Cash App and other unrelated billers, so it must carry Stripe's URL or city. LINK.COM* is the ordinary Link wallet and is excluded by the 'space after *' rule. |
+| Or LINK* followed by a space, at the start of a word | From 09-23/24 Stripe shortened the descriptor to 'LINK* <merchant>'. No Stripe URL/city anchor is required: Duffel airline bookings ('LINK* DELTA AIR DUFFEL.COM NY') and truncated card descriptors ('LINK* GO PUFF*GB LIC.') carry neither, and add ~15%. LINK.COM* (the ordinary Link wallet), EVENTLINK* and CLINK* fail the 'space after *' / word-start rules. |
+| Not cash app, missing link*, pto link*, debt-link*, team link*, coffee link*, visa money | Unrelated billers that also contain 'LINK* ' (Cash App, PTO Link, Debt-Link...): about 1-2 a day before launch, which is the false-positive floor. |
+| Amount > 0 | Purchases only; refunds (about 2% of rows) are negative and excluded. |
 
 **Deduplication.** Distinct (source, transaction id).
 
-**Measure.** TXNS = agentic transactions that day. PER_MILLION = TXNS per million panel transactions (same feeds, same day). Panel coverage still fills in for ~10 days, so the rate is the comparable series and raw counts in the latest days run low. PER_MILLION_TR7D is the ratio of 7-day sums, not a mean of daily ratios. The count is a floor: at merchants that take Stripe directly, an agent purchase carries the merchant's own descriptor and is invisible here; at the top agentic merchants Link-agent rows are under 0.01% of panel transactions (0.5% at Porkbun) since launch (investigations/stripe_vs_link_share.ipynb).
+**Measure.** TXNS = agentic purchases that day; SPEND = their $ total; MEAN_SPEND = SPEND / TXNS (MEAN_SPEND_TR7D is 7-day spend over 7-day count). PER_MILLION = TXNS per million Omega transactions that day. Panel coverage still fills in for ~10 days, so the rate is the comparable series and raw counts in the latest days run low. PER_MILLION_TR7D is the ratio of 7-day sums, not a mean of daily ratios. The count is a floor: at merchants that take Stripe directly, an agent purchase carries the merchant's own descriptor and is invisible here; at the top agentic merchants Link-agent rows are under 0.01% of panel transactions (0.5% at Porkbun) since launch (investigations/stripe_vs_link_share.ipynb).
 
 **Lag.** Complete through run date minus 5 days.
 
@@ -250,7 +252,7 @@ Complete-through dates for this build: cards 2026-10-10, e-receipts 2026-10-13.
 
 **Deduplication.** As above.
 
-**Measure.** A breakdown table rather than a daily series: the top 25 merchants by transactions, with unique cardholders and median amount, for two windows ending at the card complete-through date: PERIOD = 'Since launch' (from 2026-09-08, growing each day) or 'Last 28 days'. CARDHOLDERS = distinct panel members (per source); TXNS well above CARDHOLDERS means repeat agent purchases by the same people. SPEND_SHARE = the merchant's agentic $ over all agentic $ observed in the same window (every Link-agent transaction, including the few with no readable merchant label), so it is a share of observed agentic spend, not of the merchant's total sales.
+**Measure.** Purchases only (amount > 0). A breakdown table rather than a daily series: the top 25 merchants by transactions, with unique cardholders and median amount, for two windows ending at the card complete-through date: PERIOD = 'Since launch' (from 2026-09-08, growing each day) or 'Last 28 days'. CARDHOLDERS = distinct panel members (per source); TXNS well above CARDHOLDERS means repeat agent purchases by the same people. SPEND_SHARE = the merchant's agentic $ over all agentic $ observed in the same window (every Link-agent transaction, including the few with no readable merchant label), so it is a share of observed agentic spend, not of the merchant's total sales.
 
 **Lag.** Complete through run date minus 5 days.
 
@@ -266,7 +268,7 @@ Complete-through dates for this build: cards 2026-10-10, e-receipts 2026-10-13.
 |---|---|
 | The latest LINKAGNT* record before 2026-09-23 and the latest LINK* record from that date | One example of each descriptor form, to show what the matching rules see. |
 
-**Deduplication.** One row per form, from a card panel where one exists; no member or transaction ids are published, and masked card-number tails are blanked.
+**Deduplication.** One row per form, preferring an unwrapped descriptor; no member or transaction ids are published, and masked card-number tails are blanked.
 
 **Measure.** DESCRIPTION is the raw card descriptor, MERCHANT the label extracted from it.
 

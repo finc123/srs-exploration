@@ -1,0 +1,155 @@
+C:\Users\fintan.creedon\code\exploration\ai\phase1\t5_survival.py:289: UserWarning: obj.round has no effect with datetime, timedelta, or period dtypes. Use obj.dt.round(...) instead.
+  bt.round(2).to_csv(OUTD / "t5_backtest.csv", index=False)
+                   at_risk  churn_obs  churn_exp  lost_obs  lost_exp  churn_ratio  lost_ratio
+region prov                                                                                  
+eu     chatgpt       22131       7526    7235.47      2579   2566.75         1.04        1.00
+       claude        10856       3404    5167.19      1470   1492.85         0.66        0.98
+       gemini         4925       1437    1161.56       720    465.14         1.24        1.55
+       grok           1395        548     622.52       215    178.77         0.88        1.20
+       perplexity      175         97      80.69        22     18.77         1.20        1.17
+us     chatgpt       64127      20248   19256.47      5985   9694.64         1.05        0.62
+       claude        38303      10307   12727.62      3356   3509.25         0.81        0.96
+       gemini        19797       3495    2363.56      1562    884.83         1.48        1.77
+       grok           5801       2245    2285.90       497    507.66         0.98        0.98
+       perplexity     1962        951     749.73       169    213.64         1.27        0.79
+      prov               pk  at_risk  churn_obs  churn_exp  lost_obs  lost_exp region
+   chatgpt    chatgpt_other      173         36      41.68        10     14.54     us
+   chatgpt             go_M    10979       3935    2501.11      1052   4482.61     us
+   chatgpt           plus_M    52975      16277   16713.69      4923   5197.49     us
+    claude          max20_M      810        184     150.36        71     47.86     us
+    claude           max5_M     1709        409     536.32       168    157.13     us
+    claude            pro_A     4856        333     327.54       380    425.70     us
+    claude            pro_M    30928       9381   11713.41      2737   2878.56     us
+    gemini    ai_plus_2tb_A     2248          2       0.00       117     27.14     us
+    gemini    ai_plus_2tb_M     7851       1108     163.10       740    106.22     us
+    gemini        ai_plus_M     3485        950     751.21       256     73.38     us
+    gemini         ai_pro_M     5856       1393    1342.16       423    649.81     us
+    gemini     gemini_other      357         42     107.09        26     28.28     us
+      grok       grok_other      324         51      37.12        17     43.62     us
+      grok   premium_plus_M      234         72      78.45        23     29.10     us
+      grok      supergrok_M     5243       2122    2170.33       457    434.95     us
+perplexity perplexity_other       36         22       0.76         2      3.81     us
+perplexity            pro_M     1926        929     748.97       167    209.82     us
+   chatgpt             go_M     8470       2821    2584.72      1051    678.43     eu
+   chatgpt           plus_M    13661       4705    4650.75      1528   1888.32     eu
+    claude     claude_other       86         21      10.26        12     11.47     eu
+    claude            pro_M    10770       3383    5156.92      1458   1481.37     eu
+    gemini    ai_plus_2tb_M     1208        184      25.25       237     38.41     eu
+    gemini        ai_plus_M     1719        642     526.57       225    151.35     eu
+    gemini         ai_pro_M     1693        600     542.15       225    220.22     eu
+    gemini     gemini_other      305         11      67.59        33     55.16     eu
+      grok       grok_other      323        108      95.17        66     45.91     eu
+      grok      supergrok_M     1072        440     527.34       149    132.86     eu
+perplexity            pro_M      175         97      80.69        22     18.77     eu
+region    geo       prov           plan  subs_R  churn_events  ref_lost  open  S30   S60   S90  S120  S180  S365  at_risk_365
+    us region    chatgpt  chatgpt_other     242            84        31   127  1.0 0.783 0.666 0.644 0.626 0.434           23
+    us region    chatgpt           go_M   12245          4856      1397  5992  1.0 0.721 0.630 0.572 0.500 0.432            0
+    us region    chatgpt         plus_M   99133         50434     16924 31775  1.0 0.728 0.630 0.569 0.487 0.357        12129
+    us region     claude        max20_M     892           237       100   555  1.0 0.875 0.810 0.746 0.649 0.494           34
+    us region     claude         max5_M    1978           594       252  1132  1.0 0.844 0.771 0.719 0.632 0.433           44
+    us region     claude          pro_A    5082           404       535  4143  1.0 0.986 0.969 0.951 0.925 0.859          260
+    us region     claude          pro_M   36747         13642      4295 18810  1.0 0.806 0.715 0.651 0.562 0.392         1049
+    us region     gemini  ai_plus_2tb_A    2269             2       138  2129  1.0 1.000 0.999 0.999 0.999 0.997            0
+    us region     gemini  ai_plus_2tb_M    8462          1315      1144  6003  1.0 0.939 0.902 0.880 0.842 0.798            0
+    us region     gemini      ai_plus_A     488             0        26   462  1.0 1.000 1.000 1.000 1.000 1.000            0
+    us region     gemini      ai_plus_M    3651          1065       307  2279  1.0 0.740 0.660 0.604 0.540 0.464            0
+    us region     gemini       ai_pro_M    8852          3301      1511  4040  1.0 0.820 0.741 0.670 0.587 0.466          915
+    us region     gemini   gemini_other     558           186        83   289  1.0 0.836 0.757 0.678 0.625 0.557           48
+    us region       grok     grok_other     482           120       106   256  1.0 1.000 0.906 0.896 0.871 0.837          122
+    us region       grok         lite_M     523           226        63   234  1.0 1.000 0.543 0.454 0.327 0.327            0
+    us region       grok premium_plus_M     801           470       192   139  1.0 1.000 0.641 0.536 0.447 0.258           89
+    us region       grok    supergrok_M    7386          3782       940  2664  1.0 1.000 0.560 0.461 0.346 0.203          201
+    us region       muse     muse_other     151             0         0   151  1.0 1.000 1.000 1.000 1.000 1.000            0
+    us region perplexity          pro_A     483            41        93   349  1.0 1.000 0.997 0.992 0.988 0.970           77
+    us region perplexity          pro_M    2948          1688       430   830  1.0 1.000 0.604 0.493 0.367 0.207          157
+    us region    chatgpt            ALL  111620         55374     18352 37894  1.0 0.727 0.630 0.569 0.489 0.359        12152
+    us region     claude            ALL   44699         14877      5182 24640  1.0 0.830 0.749 0.691 0.611 0.448         1387
+    us region     gemini            ALL   24280          5869      3209 15202  1.0 0.874 0.820 0.777 0.722 0.606          963
+    us region       grok            ALL    9192          4598      1301  3293  1.0 1.000 0.584 0.490 0.384 0.247          412
+    us region       muse            ALL     151             0         0   151  1.0 1.000 1.000 1.000 1.000 1.000            0
+    us region perplexity            ALL    3474          1755       528  1191  1.0 1.000 0.658 0.560 0.448 0.295          234
+    eu region    chatgpt           go_M   10152          3924      1619  4598  1.0 0.686 0.594 0.532 0.445 0.320            0
+    eu region    chatgpt         plus_M   35500         20265      7777  7428  1.0 0.658 0.542 0.476 0.389 0.255         3201
+    eu region     claude         max5_M     329            99        56   174  1.0 0.817 0.694 0.670 0.620 0.487            8
+    eu region     claude          pro_A     627            22       124   481  1.0 0.992 0.981 0.978 0.962 0.897           18
+    eu region     claude          pro_M   12736          4735      2070  5929  1.0 0.772 0.656 0.584 0.502 0.315          143
+    eu region     gemini  ai_plus_2tb_M    1350           215       346   787  1.0 0.947 0.893 0.874 0.830 0.716            0
+    eu region     gemini      ai_plus_M    2150           917       378   852  1.0 0.728 0.586 0.507 0.418 0.262            0
+    eu region     gemini       ai_pro_M    2838          1392       577   868  1.0 0.732 0.599 0.501 0.400 0.269          128
+    eu region     gemini   gemini_other     328            23        44   261  1.0 0.950 0.941 0.912 0.893 0.868            1
+    eu region       grok     grok_other     441           186       106   149  1.0 1.000 1.000 0.527 0.349 0.233           18
+    eu region       grok    supergrok_M    1464           688       293   483  1.0 1.000 1.000 0.502 0.306 0.148           16
+    eu region perplexity          pro_M     415           291        68    56  1.0 0.515 0.367 0.290 0.184 0.098           13
+    eu region    chatgpt            ALL   45691         24202      9403 12045  1.0 0.664 0.552 0.487 0.400 0.263         3201
+    eu region     claude            ALL   13787          4881      2267  6637  1.0 0.783 0.672 0.605 0.527 0.346          170
+    eu region     gemini            ALL    6666          2547      1345  2768  1.0 0.787 0.674 0.603 0.521 0.358          129
+    eu region       grok            ALL    1905           874       399   632  1.0 1.000 1.000 0.507 0.315 0.169           34
+    eu region perplexity            ALL     443           298        72    73  1.0 0.548 0.411 0.338 0.239 0.163           27
+month                                          2026-05-01  2026-06-01  2026-07-01  2026-08-01  2026-09-01  2026-10-01  2026-10-13  2026-10-18
+region prov       fit                                                                                                                        
+eu     chatgpt    holdout_cohort_S                  0.076       0.105       0.098       0.102       0.124       0.063       0.053         NaN
+                  holdout_trailing12m_hazards       0.083       0.108       0.097       0.097       0.117       0.054       0.043         NaN
+                  holdout_trained_to_T0             0.059       0.084       0.074       0.074       0.095       0.034       0.023         NaN
+       claude     holdout_cohort_S                 -0.042      -0.040      -0.075      -0.105      -0.093      -0.142      -0.160         NaN
+                  holdout_trailing12m_hazards       0.013      -0.019      -0.067      -0.102      -0.089      -0.140      -0.159         NaN
+                  holdout_trained_to_T0            -0.006      -0.044      -0.097      -0.135      -0.127      -0.178      -0.197         NaN
+       gemini     holdout_cohort_S                  0.068       0.095       0.139       0.162       0.225       0.199       0.224         NaN
+                  holdout_trailing12m_hazards       0.066       0.090       0.132       0.154       0.215       0.189       0.214         NaN
+                  holdout_trained_to_T0             0.058       0.082       0.124       0.145       0.205       0.180       0.204         NaN
+       grok       holdout_cohort_S                  0.090       0.088       0.044       0.030       0.050      -0.005      -0.027         NaN
+                  holdout_trailing12m_hazards       0.083       0.082       0.041       0.020       0.030      -0.028      -0.052         NaN
+                  holdout_trained_to_T0             0.085       0.081       0.038       0.024       0.044      -0.012      -0.034         NaN
+       perplexity holdout_cohort_S                 -0.044       0.021       0.154       0.125       0.141       0.059       0.047         NaN
+                  holdout_trailing12m_hazards      -0.013       0.053       0.190       0.168       0.188       0.101       0.091         NaN
+                  holdout_trained_to_T0            -0.044       0.021       0.154       0.125       0.141       0.059       0.047         NaN
+us     chatgpt    holdout_cohort_S                  0.049       0.041       0.017      -0.007      -0.024      -0.076         NaN      -0.099
+                  holdout_trailing12m_hazards       0.051       0.044       0.022      -0.001      -0.015      -0.066         NaN      -0.088
+                  holdout_trained_to_T0             0.044       0.036       0.014      -0.009      -0.023      -0.074         NaN      -0.097
+       claude     holdout_cohort_S                  0.050       0.075       0.072       0.062       0.055       0.033         NaN       0.026
+                  holdout_trailing12m_hazards       0.027       0.025       0.003      -0.018      -0.029      -0.051         NaN      -0.060
+                  holdout_trained_to_T0             0.015       0.010      -0.014      -0.035      -0.047      -0.070         NaN      -0.080
+       gemini     holdout_cohort_S                  0.044       0.068       0.081       0.093       0.122       0.110         NaN       0.115
+                  holdout_trailing12m_hazards       0.043       0.065       0.085       0.104       0.140       0.132         NaN       0.138
+                  holdout_trained_to_T0             0.037       0.060       0.080       0.099       0.135       0.127         NaN       0.133
+       grok       holdout_cohort_S                  0.013      -0.002      -0.025      -0.041      -0.049      -0.055         NaN      -0.073
+                  holdout_trailing12m_hazards       0.035       0.049       0.033       0.039       0.022      -0.008         NaN      -0.033
+                  holdout_trained_to_T0             0.049       0.065       0.049       0.054       0.036       0.005         NaN      -0.020
+       muse       holdout_cohort_S                    NaN         NaN         NaN         NaN         NaN      -1.000         NaN      -1.000
+       perplexity holdout_cohort_S                 -0.158      -0.163      -0.175      -0.189      -0.184      -0.202         NaN      -0.205
+                  holdout_trailing12m_hazards       0.046       0.039       0.057       0.080       0.125       0.134         NaN       0.161
+                  holdout_trained_to_T0             0.034       0.027       0.044       0.067       0.111       0.120         NaN       0.146
+                                   model    obs    err
+region prov       cohort                              
+eu     chatgpt    started<=T0   5255.793   4656  0.129
+                  started>T0    7060.426   7389 -0.044
+       claude     started<=T0   1013.283   1666 -0.392
+                  started>T0    3788.469   4316 -0.122
+       gemini     started<=T0   1620.409   1171  0.384
+                  started>T0    1712.696   1597  0.072
+       grok       started<=T0    119.420    119  0.004
+                  started>T0     491.235    513 -0.042
+       perplexity started<=T0     27.657     26  0.064
+                  started>T0      48.766     47  0.038
+us     chatgpt    started<=T0  18636.067  20882 -0.108
+                  started>T0   15575.340  17012 -0.084
+       claude     started<=T0   8393.696   9935 -0.155
+                  started>T0   14276.074  14705 -0.029
+       gemini     started<=T0   9138.862   7786  0.174
+                  started>T0    7555.306   6954  0.086
+       grok       started<=T0    978.097    908  0.077
+                  started>T0    2020.326   2151 -0.061
+       perplexity started<=T0    350.417    316  0.109
+                  started>T0     614.441    526  0.168
+month              2024-07-01  2024-10-01  2025-01-01  2025-04-01  2025-07-01  2025-10-01  2026-01-01  2026-04-01  2026-07-01  2026-10-01
+region prov                                                                                                                              
+eu     chatgpt          0.006       0.050      -0.002       0.156       0.062       0.044       0.015       0.019       0.054      -0.013
+       claude           0.227       0.170       0.248       0.352       0.474       0.465       0.329       0.098      -0.001      -0.018
+       gemini           0.204       0.095       0.034       0.123       0.064       0.066       0.068       0.001       0.015      -0.008
+       grok            -0.094      -0.218      -0.150       0.043      -0.028      -0.026       0.031       0.071       0.045       0.000
+       perplexity      -0.000      -0.093      -0.010       0.072       0.193       0.011       0.086      -0.073       0.113       0.017
+us     chatgpt          0.045       0.074       0.046       0.077       0.016       0.044       0.016       0.010       0.040       0.002
+       claude           0.317       0.177       0.144       0.164       0.231       0.231       0.180       0.047       0.011      -0.012
+       gemini           0.079       0.203       0.208       0.121       0.097       0.158       0.104      -0.002       0.000      -0.001
+       grok            -0.007      -0.074      -0.102      -0.002       0.038       0.086       0.049       0.045       0.048       0.002
+       muse               NaN         NaN         NaN         NaN         NaN         NaN         NaN         NaN         NaN       0.000
+       perplexity      -0.091       0.032       0.019       0.030       0.010       0.029      -0.008      -0.014      -0.002       0.017

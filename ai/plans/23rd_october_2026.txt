@@ -1,0 +1,56 @@
+Card-data gross adds and TR30 subscribers for AI providers (US, Earnest CE Prime Omega via TXNS_CORE_V)
+Output: ai/notebooks/card_gross_adds.ipynb (generator notebooks/_make_card_gross_adds.py, engine notebooks/card_core_rules.py,
+cache .cache/card_core/)
+
+1. Source rows
+   - EARNEST.COMMON.TXNS_CORE_V, BRAND_ID IN (29847 ANTHROPIC, 11021 FACEBOOK, 32111 GOOGLE ONE, 27440 OPENAI, 29069 PERPLEXITY).
+   - Filter on BRAND_ID + TRANS_DATE to prune (the view is clustered on brand ids and date).
+   - Gaps found while profiling (2026-10-23), to note at the top of the notebook:
+     a. ChatGPT subscriptions are NOT under brand 27440. 'OPENAI *CHATGPT SUBSCR ...' merchids have no main, payment or
+        distribution brand in Omega's MID_MATCH_V1_0, so TXNS_CORE never picks them up. Brand 27440 holds 'OPENAI OPENAI.COM'
+        rows (median $10-15, mostly API credits). The same panel's ChatGPT rows (~2.8M rows / 331k members since 2023) are
+        pulled from the Omega share by descriptor (MID_V1_0 merchdesc ILIKE '%CHATGPT%'), with TXNS_CORE's row logic
+        (2022 panel join, affected-accounts exclusion). Long-term fix: ask for ChatGPT merchids to be mapped to a brand.
+     b. Muse direct web ('METAPAY META.COM') has only a payment brand (25062), not FACEBOOK. Brand 11021 is mostly Facebook ad
+        spend ('FACEBK *____'); its 'GOOGLE *FACEBOOK' rows are Google Play in-app purchases, which include Muse from
+        2026-09-08. Muse direct rows are pulled by descriptor in the same way as ChatGPT.
+     c. Other unbranded merchants, patched the same way: Claude's 2024-25 'CLAUDEAI SUBSCRIPTION ...' (no dot; ~40% of
+        Claude payments then), any unbranded OPENAI / ANTHROPIC merchant, Google Play for Claude ('GOOGLE *CLAUDE BY ANTH...'), Perplexity
+        ('GOOGLE *PERPLEXITY ...') and Muse ('GOOGLE MUSE FROM META'); Perplexity's brandless Stripe descriptor
+        ('PRO WWW.PERPLEX...', 2026-06-08 to 10-04); Google One's SKU-code descriptors ('GOOGLE G1SK003M', 'G1AI101M',
+        from 2026-09-15). Without these, Perplexity loses ~90% of payments Jun-Sep 2026 and Gemini ~half from mid-Sep 2026.
+     d. Grok and Cursor are not in the brand list and are out of scope.
+
+2. Panel
+   - Filter to the 2022 consistent-shopper panel (WEIGHT_AGG_CS2022 IS NOT NULL).
+   - Fixed-panel check: CARDLINK_PANEL_V1_0 'aggregate_consistent_shopper_2022_v2' has one row per member (3,614,559), a single
+     PANEL_START_DATE (2022-01-01) and one static weight per member. Membership is fixed. TXNS_CORE also drops 8,828 affected
+     accounts (AFFECTED_ACCOUNTS_092026), so the denominator is 3,605,731 members (weighted: sum of WEIGHT_AGG_CS2022).
+   - Caveat: a fixed list is not a fixed active base. Members can stop transacting (earlier work: ~99.5% still active at data
+     end, so attrition is small). Report % of panel on the fixed denominator; show an active-member denominator as a check.
+
+3. Descriptor x price research (per provider)
+   - Group billing descriptions into families by regex (e.g. Anthropic: 'CLAUDE.AI SUBSCRIPTION', 'ANTHROPIC* CLAUDE SUB',
+     'ANTHROPIC* CLAUDE', bare 'ANTHROPIC', Google Play, Team).
+   - For each family: rows, members, amount histogram, share of rows within a US plan price band (from plans/*_prices.csv,
+     valid on the transaction date, +0-12% sales tax), and recurrence = share of payments followed by another payment from
+     the same member and family 26-35 days later.
+   - Subscription family = high price-band match AND high monthly recurrence. Random-date / off-price families (hypothesis:
+     bare 'ANTHROPIC' = API credits) are excluded to limit false-positive adds. Record the descriptor rules in the notebook.
+   - Price collisions resolved by recurrence: Claude $200 (Pro annual vs Max 20x), Google One $19.99 (AI Pro monthly vs 100GB
+     annual), $99.99 (Ultra 5x vs 2TB annual), $199.99 (AI Pro annual vs Ultra 20x).
+   - Cross-check the kept rows against the earlier Omega filters (filters/*.py) and report agreement.
+
+4. Metrics (daily, from 2024-01-01)
+   - Subscriber payments: distinct members with a qualifying plan payment on day d; TR30 = distinct members with one in d-29..d.
+   - Gross adds: a member's first qualifying payment for a provider (plan) with none in the previous 75 days (400 days after
+     an annual payment). Data starts 2023-01-01, so adds are reported from 2024-01-01 (a full lookback). Reactivations count.
+   - Cuts: provider (Claude, ChatGPT, Gemini, Perplexity, Muse) and plan (e.g. Claude Pro, ChatGPT Go, Google AI Pro).
+   - % of panel: count / 3,605,731 (unweighted) and weighted count / sum of weights.
+   - Caveats: TR30 payments undercount annual-plan subscribers (they pay once a year); the most recent ~10 days are still
+     filling (shaded on charts); web + Google Play only (Apple billing is invisible on cards).
+
+5. Charts
+   - TR30 subscribers by provider (count, and % of panel).
+   - Share of TR30 subscribers between providers over time (100% stacked).
+   - TR30 gross adds by provider (count and % of panel), and TR30 subscribers by plan for each provider.

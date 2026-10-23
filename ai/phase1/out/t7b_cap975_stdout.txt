@@ -1,0 +1,104 @@
+us done 2026-09
+eu done 2026-09
+region       prov     channel  capture_all source   subs
+    eu    chatgpt       apple        0.966      R  57419
+    eu    chatgpt google_play        0.979   full  23049
+    eu    chatgpt      paypal        0.971      R   7368
+    eu    chatgpt      stripe          NaN      R     40
+    eu     claude       apple        0.981      R   6007
+    eu     claude      direct        0.988   full  26183
+    eu     claude google_play        0.967      R   2231
+    eu     claude       other          NaN      R     94
+    eu     claude      paypal          NaN      R     36
+    eu     claude      stripe        0.992   full   6410
+    eu     gemini       apple        0.916      R   2689
+    eu     gemini google_play        0.978   full  27930
+    eu     gemini      paypal        0.970      R   1298
+    eu       grok       apple        0.946      R   2272
+    eu       grok google_play        0.920      R   1276
+    eu       grok      paypal          NaN      R     43
+    eu       grok      stripe        0.952      R    977
+    eu perplexity       apple        0.973      R    594
+    eu perplexity google_play        0.950      R    218
+    eu perplexity       other          NaN      R      7
+    eu perplexity      stripe          NaN      R      1
+    us    chatgpt       apple        0.939      R 194166
+    us    chatgpt google_play        0.986   full  41628
+    us     claude       apple        0.965      R  21027
+    us     claude      direct        0.987   full  97785
+    us     claude google_play        0.977   full   4197
+    us     gemini       apple        0.948      R   5834
+    us     gemini google_play        0.986   full 109342
+    us       grok       apple        0.933      R  14553
+    us       grok google_play        0.954      R   4798
+    us       muse       apple          NaN      R    266
+    us       muse google_play          NaN      R    135
+    us perplexity       apple        0.935      R   5761
+    us perplexity google_play        0.954      R    877
+    us perplexity       other          NaN      R     49
+region   start           comparison       prov  err_m6  err_m12   month     obs     model    err
+    eu 2024-01             full_all    chatgpt   0.027    0.045 2026-09 24571.0 30348.206  0.235
+    eu 2024-01             full_all     claude   0.076   -0.005 2026-09 22293.0 23174.188  0.040
+    eu 2024-01             full_all     gemini   0.001   -0.005 2026-09 16894.0 17010.583  0.007
+    eu 2024-01             full_all       grok   0.175    0.162 2026-09  1757.0  1957.436  0.114
+    eu 2024-01             full_all perplexity  -0.131    0.036 2026-09   160.0   195.994  0.225
+    eu 2024-01        full_nonapple    chatgpt  -0.051   -0.033 2026-09 10702.0 10783.717  0.008
+    eu 2024-01        full_nonapple     claude   0.092   -0.013 2026-09 19921.0 19889.455 -0.002
+    eu 2024-01        full_nonapple     gemini   0.004   -0.006 2026-09 16047.0 16021.839 -0.002
+    eu 2024-01        full_nonapple       grok   0.244    0.096 2026-09   989.0  1041.456  0.053
+    eu 2024-01        full_nonapple perplexity  -0.119    0.239 2026-09    49.0    52.610  0.074
+    eu 2024-01 full_nonapple_Rcells    chatgpt  -0.052    0.024 2026-09  2954.0  3103.339  0.051
+    eu 2024-01 full_nonapple_Rcells     claude     NaN   -0.008 2026-09  1392.0  1449.891  0.042
+    eu 2024-01 full_nonapple_Rcells       grok   0.244    0.096 2026-09   989.0  1041.456  0.053
+    eu 2024-01 full_nonapple_Rcells perplexity  -0.119    0.239 2026-09    49.0    52.610  0.074
+    eu 2025-07             full_all    chatgpt   0.151    0.200 2026-09 24571.0 29677.053  0.208
+    eu 2025-07             full_all     claude  -0.026    0.030 2026-09 22293.0 23181.052  0.040
+    eu 2025-07             full_all     gemini   0.008    0.007 2026-09 16894.0 17014.713  0.007
+    eu 2025-07             full_all       grok   0.039    0.063 2026-09  1757.0  1953.976  0.112
+    eu 2025-07             full_all perplexity   0.177    0.236 2026-09   160.0   195.052  0.219
+    eu 2025-07        full_nonapple    chatgpt   0.014    0.017 2026-09 10702.0 10801.971  0.009
+    eu 2025-07        full_nonapple     claude  -0.041   -0.002 2026-09 19921.0 19897.785 -0.001
+    eu 2025-07        full_nonapple     gemini  -0.005   -0.004 2026-09 16047.0 16026.645 -0.001
+    eu 2025-07        full_nonapple       grok   0.045    0.008 2026-09   989.0  1040.133  0.052
+    eu 2025-07        full_nonapple perplexity   0.138    0.058 2026-09    49.0    52.716  0.076
+    eu 2025-07 full_nonapple_Rcells    chatgpt   0.053    0.068 2026-09  2954.0  3098.018  0.049
+    eu 2025-07 full_nonapple_Rcells     claude  -0.086    0.049 2026-09  1392.0  1450.539  0.042
+    eu 2025-07 full_nonapple_Rcells     gemini   0.058   -0.003 2026-09   697.0   731.845  0.050
+    eu 2025-07 full_nonapple_Rcells       grok   0.045    0.008 2026-09   989.0  1040.133  0.052
+    eu 2025-07 full_nonapple_Rcells perplexity   0.138    0.058 2026-09    49.0    52.716  0.076
+    us 2024-01             full_all    chatgpt   0.103    0.135 2026-09 65970.0 84845.867  0.286
+    us 2024-01             full_all     claude  -0.016    0.009 2026-09 60887.0 62695.269  0.030
+    us 2024-01             full_all     gemini   0.026    0.006 2026-09 65691.0 65885.801  0.003
+    us 2024-01             full_all       grok   0.025    0.020 2026-09  6185.0  6694.465  0.082
+    us 2024-01             full_all perplexity   0.085    0.058 2026-09  2118.0  2215.070  0.046
+    us 2024-01        full_nonapple    chatgpt  -0.030   -0.015 2026-09 15195.0 15116.333 -0.005
+    us 2024-01        full_nonapple     claude  -0.015   -0.004 2026-09 51236.0 51141.727 -0.002
+    us 2024-01        full_nonapple     gemini   0.029    0.003 2026-09 63233.0 63115.538 -0.002
+    us 2024-01        full_nonapple       grok  -0.046    0.075 2026-09  1931.0  1936.556  0.003
+    us 2024-01        full_nonapple perplexity   0.202    0.125 2026-09   272.0   263.921 -0.030
+    us 2024-01 full_nonapple_Rcells       grok  -0.046    0.075 2026-09  1931.0  1936.556  0.003
+    us 2024-01 full_nonapple_Rcells perplexity   0.202    0.125 2026-09   272.0   263.921 -0.030
+    us 2025-07             full_all    chatgpt   0.165    0.209 2026-09 65970.0 82532.906  0.251
+    us 2025-07             full_all     claude   0.008    0.023 2026-09 60887.0 62729.893  0.030
+    us 2025-07             full_all     gemini   0.004    0.002 2026-09 65691.0 65897.704  0.003
+    us 2025-07             full_all       grok   0.041    0.107 2026-09  6185.0  6744.773  0.091
+    us 2025-07             full_all perplexity  -0.068    0.014 2026-09  2118.0  2234.029  0.055
+    us 2025-07        full_nonapple    chatgpt  -0.003   -0.003 2026-09 15195.0 15136.431 -0.004
+    us 2025-07        full_nonapple     claude  -0.001    0.000 2026-09 51236.0 51169.445 -0.001
+    us 2025-07        full_nonapple     gemini  -0.002   -0.001 2026-09 63233.0 63131.739 -0.002
+    us 2025-07        full_nonapple       grok  -0.061    0.105 2026-09  1931.0  1946.125  0.008
+    us 2025-07        full_nonapple perplexity  -0.106   -0.009 2026-09   272.0   263.979 -0.029
+    us 2025-07 full_nonapple_Rcells       grok  -0.061    0.105 2026-09  1931.0  1946.125  0.008
+    us 2025-07 full_nonapple_Rcells perplexity  -0.106   -0.009 2026-09   272.0   263.979 -0.029
+      prov     model  obs_full  share_model  share_obs_full region   month
+   chatgpt 84845.867     65970        0.381           0.328     us 2026-09
+    claude 62695.269     60887        0.282           0.303     us 2026-09
+    gemini 65885.801     65691        0.296           0.327     us 2026-09
+      grok  6694.465      6185        0.030           0.031     us 2026-09
+      muse   135.000       135        0.001           0.001     us 2026-09
+perplexity  2215.070      2118        0.010           0.011     us 2026-09
+   chatgpt 30348.206     24571        0.418           0.374     eu 2026-09
+    claude 23174.188     22293        0.319           0.339     eu 2026-09
+    gemini 17010.583     16894        0.234           0.257     eu 2026-09
+      grok  1957.436      1757        0.027           0.027     eu 2026-09
+perplexity   195.994       160        0.003           0.002     eu 2026-09

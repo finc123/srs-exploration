@@ -58,7 +58,9 @@ def q(sql: str) -> pd.DataFrame:
     with _conn_lock:
         if _conn is None:
             import snowflake.connector
-            _conn = snowflake.connector.connect(connection_name=os.getenv("SNOWFLAKE_CONNECTION", "default"))
+            # SNOWFLAKE_WAREHOUSE overrides the connection's default (e.g. ANALYST_XL for a full backfill).
+            wh = {"warehouse": os.environ["SNOWFLAKE_WAREHOUSE"]} if os.getenv("SNOWFLAKE_WAREHOUSE") else {}
+            _conn = snowflake.connector.connect(connection_name=os.getenv("SNOWFLAKE_CONNECTION", "default"), **wh)
     df = _conn.cursor().execute(sql).fetch_pandas_all()
     df.columns = [c.lower() for c in df.columns]
     return df

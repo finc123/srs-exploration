@@ -1,0 +1,129 @@
+region       prov           grp   subs  share  first_renewal_rate  receipts_per_sub  naive_S90  naive_S180  share_apple
+    us    chatgpt             R 110791  0.516               0.701             5.358      0.594       0.438        0.879
+    us    chatgpt          rest 103838  0.484               0.488             3.853      0.375       0.251        0.768
+    us     claude             R  44597  0.388               0.744             4.403      0.735       0.590        0.275
+    us     claude          rest  70198  0.612               0.654             3.850      0.616       0.467        0.109
+    us     gemini             R  24280  0.224               0.776             5.125      0.799       0.691        0.127
+    us     gemini          rest  83925  0.776               0.733             4.777      0.716       0.582        0.030
+    us       grok             R   9082  0.527               0.534             3.085      0.556       0.351        0.875
+    us       grok          rest   8148  0.473               0.401             2.309      0.442       0.265        0.635
+    us       muse             R    151  0.377                 NaN             1.053      1.000       1.000        0.828
+    us       muse          rest    250  0.623                 NaN             1.008      1.000       1.000        0.564
+    us perplexity             R   3462  0.559               0.565             3.534      0.640       0.429        0.927
+    us perplexity          rest   2731  0.441               0.449             3.132      0.505       0.318        0.789
+    us    chatgpt R_censored_KM 110791    NaN                 NaN               NaN      0.630       0.488          NaN
+    us     claude R_censored_KM  44597    NaN                 NaN               NaN      0.750       0.611          NaN
+    us     gemini R_censored_KM  24280    NaN                 NaN               NaN      0.820       0.722          NaN
+    us       grok R_censored_KM   9082    NaN                 NaN               NaN      0.581       0.379          NaN
+    us       muse R_censored_KM    151    NaN                 NaN               NaN      1.000       1.000          NaN
+    us perplexity R_censored_KM   3462    NaN                 NaN               NaN      0.657       0.446          NaN
+    eu    chatgpt             R  45092  0.518               0.631             4.393      0.514       0.348        0.754
+    eu    chatgpt          rest  41983  0.482               0.436             3.114      0.353       0.226        0.541
+    eu     claude             R  13778  0.334               0.736             3.789      0.662       0.507        0.231
+    eu     claude          rest  27429  0.666               0.666             3.292      0.597       0.452        0.104
+    eu     gemini             R   6666  0.207               0.737             4.269      0.649       0.481        0.177
+    eu     gemini          rest  25483  0.793               0.715             4.005      0.648       0.492        0.060
+    eu       grok             R   1884  0.414               0.468             2.432      1.000       0.297        0.610
+    eu       grok          rest   2669  0.586               0.318             1.922      1.000       0.194        0.418
+    eu perplexity             R    441  0.541               0.490             3.093      0.387       0.223        0.821
+    eu perplexity          rest    374  0.459               0.327             2.225      0.289       0.170        0.612
+    eu    chatgpt R_censored_KM  45092    NaN                 NaN               NaN      0.552       0.400          NaN
+    eu     claude R_censored_KM  13778    NaN                 NaN               NaN      0.673       0.527          NaN
+    eu     gemini R_censored_KM   6666    NaN                 NaN               NaN      0.674       0.521          NaN
+    eu       grok R_censored_KM   1884    NaN                 NaN               NaN      1.000       0.314          NaN
+    eu perplexity R_censored_KM    441    NaN                 NaN               NaN      0.414       0.240          NaN
+region       prov     dim            value     R  rest  diff_pp
+    us    chatgpt      pk             go_M 0.111 0.103    0.723
+    us    chatgpt      pk           plus_M 0.887 0.894   -0.706
+    us    chatgpt channel            apple 0.879 0.768   11.039
+    us    chatgpt channel      google_play 0.121 0.232  -11.039
+    us     claude      pk           max5_M 0.044 0.052   -0.756
+    us     claude      pk            pro_A 0.114 0.092    2.203
+    us     claude      pk            pro_M 0.822 0.833   -1.091
+    us     claude channel            apple 0.275 0.109   16.659
+    us     claude channel           direct 0.702 0.852  -15.043
+    us     claude channel      google_play 0.023 0.039   -1.615
+    us     gemini      pk    ai_plus_2tb_A 0.093 0.070    2.301
+    us     gemini      pk    ai_plus_2tb_M 0.349 0.304    4.456
+    us     gemini      pk        ai_plus_M 0.150 0.167   -1.639
+    us     gemini      pk         ai_pro_M 0.365 0.423   -5.856
+    us     gemini channel            apple 0.127 0.030    9.689
+    us     gemini channel      google_play 0.873 0.970   -9.689
+    us       grok      pk       grok_other 0.051 0.058   -0.732
+    us       grok      pk           lite_M 0.058 0.077   -1.900
+    us       grok      pk   premium_plus_M 0.078 0.130   -5.228
+    us       grok      pk      supergrok_M 0.813 0.735    7.860
+    us       grok channel            apple 0.875 0.635   24.017
+    us       grok channel      google_play 0.125 0.365  -24.017
+    us       muse      pk       muse_other 1.000 1.000    0.000
+    us       muse channel            apple 0.828 0.564   26.381
+    us       muse channel      google_play 0.172 0.436  -26.381
+    us perplexity      pk            pro_A 0.139 0.108    3.100
+    us perplexity      pk            pro_M 0.849 0.884   -3.536
+    us perplexity channel            apple 0.927 0.789   13.812
+    us perplexity channel      google_play 0.069 0.199  -12.987
+    eu    chatgpt      pk             go_M 0.225 0.264   -3.861
+    eu    chatgpt      pk           plus_M 0.774 0.735    3.906
+    eu    chatgpt channel            apple 0.754 0.541   21.322
+    eu    chatgpt channel      google_play 0.192 0.342  -15.003
+    eu    chatgpt channel           paypal 0.054 0.117   -6.280
+    eu     claude      pk            pro_A 0.046 0.048   -0.287
+    eu     claude      pk            pro_M 0.924 0.914    0.947
+    eu     claude channel            apple 0.231 0.104   12.730
+    eu     claude channel           direct 0.594 0.663   -6.852
+    eu     claude channel      google_play 0.051 0.056   -0.479
+    eu     claude channel           stripe 0.122 0.174   -5.211
+    eu     gemini      pk    ai_plus_2tb_M 0.203 0.234   -3.144
+    eu     gemini      pk        ai_plus_M 0.323 0.315    0.754
+    eu     gemini      pk         ai_pro_M 0.426 0.384    4.153
+    eu     gemini      pk     gemini_other 0.049 0.067   -1.762
+    eu     gemini channel            apple 0.177 0.060   11.790
+    eu     gemini channel      google_play 0.779 0.901  -12.180
+    eu     gemini channel           paypal 0.044 0.040    0.390
+    eu       grok      pk       grok_other 0.223 0.232   -0.899
+    eu       grok      pk      supergrok_M 0.777 0.768    0.899
+    eu       grok channel            apple 0.610 0.418   19.211
+    eu       grok channel      google_play 0.242 0.310   -6.782
+    eu       grok channel           stripe 0.144 0.269  -12.555
+    eu perplexity      pk perplexity_other 0.063 0.053    1.002
+    eu perplexity      pk            pro_M 0.937 0.947   -1.002
+    eu perplexity channel            apple 0.821 0.612   20.856
+    eu perplexity channel      google_play 0.175 0.372  -19.705
+value              2024Q1  2024Q2  2024Q3  2024Q4  2025Q1  2025Q2  2025Q3  2025Q4  2026Q1  2026Q2  2026Q3  2026Q4
+region prov                                                                                                      
+eu     chatgpt        0.3     0.5     0.7     2.1     2.7     0.6    -0.5    -0.0    -1.0    -1.5    -1.3    -2.5
+       claude        -0.0     0.1     0.3     0.4     0.7     0.4     0.3     0.4     1.3     1.3    -1.1    -4.0
+       gemini         0.0     0.1     0.2     0.1     0.4     0.5     0.5     2.3     0.6    -0.3    -1.8    -2.6
+       grok           0.3    -0.0     0.4     0.0     1.5     0.4     0.1     1.6     2.9    -1.0    -3.1    -2.9
+       perplexity     1.9    -0.8     1.2     4.5     3.1     2.4     1.8    -1.0    -3.5    -1.0    -4.8    -3.8
+us     chatgpt       -1.4    -2.3    -3.7    -5.4    -1.2     5.3     3.1     3.2     3.2     2.4    -1.4    -1.8
+       claude        -0.8    -1.0    -1.6    -1.7    -0.7     0.1    -0.4    -0.1     3.2     5.0     0.6    -2.6
+       gemini        -0.1    -1.6    -2.4    -2.4    -0.9     0.5     0.0     0.4     5.7     3.4    -0.3    -2.2
+       grok          -1.6    -1.6    -1.0    -2.3     1.0     1.0     2.2     1.8     3.1     1.1    -0.2    -3.5
+       muse           NaN     NaN     NaN     NaN     NaN     NaN     NaN     NaN     NaN     NaN    10.8   -10.8
+       perplexity    -1.9    -3.2    -2.7    -4.9    -0.6     2.2     0.3     1.5     3.6     6.2     1.0    -1.8
+      prov     channel     n_R  n_rest  fr_R  fr_rest region  diff_pp
+   chatgpt       apple 87933.0 70760.0 0.697    0.434     us   26.286
+   chatgpt google_play 10959.0 18347.0 0.741    0.702     us    3.881
+    claude       apple  9416.0  5378.0 0.707    0.409     us   29.805
+    claude      direct 25172.0 46915.0 0.770    0.694     us    7.671
+    claude google_play   792.0  1913.0 0.747    0.716     us    3.184
+    gemini       apple  2369.0  1790.0 0.718    0.510     us   20.797
+    gemini google_play 16606.0 61735.0 0.788    0.742     us    4.598
+      grok       apple  6267.0  4009.0 0.535    0.333     us   20.161
+      grok google_play   831.0  2042.0 0.566    0.544     us    2.200
+perplexity       apple  2723.0  1802.0 0.564    0.416     us   14.880
+perplexity google_play   214.0   475.0 0.626    0.579     us    4.722
+   chatgpt       apple 28712.0 18258.0 0.619    0.258     eu   36.145
+   chatgpt google_play  7192.0 11473.0 0.681    0.641     eu    4.029
+   chatgpt      paypal  2117.0  4101.0 0.761    0.719     eu    4.285
+    claude       apple  2207.0  1820.0 0.679    0.218     eu   46.107
+    claude      direct  6732.0 14346.0 0.757    0.722     eu    3.561
+    claude google_play   501.0  1011.0 0.768    0.680     eu    8.894
+    claude      stripe   839.0  1861.0 0.794    0.753     eu    4.098
+    gemini       apple   975.0  1107.0 0.613    0.360     eu   25.290
+    gemini google_play  4065.0 17184.0 0.776    0.743     eu    3.360
+    gemini      paypal   236.0   750.0 0.720    0.700     eu    2.034
+      grok       apple   906.0   836.0 0.492    0.177     eu   31.524
+      grok google_play   346.0   568.0 0.526    0.481     eu    4.538
+      grok      stripe   220.0   517.0 0.550    0.528     eu    2.195

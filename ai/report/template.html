@@ -1,0 +1,184 @@
+<title>AI Subscriber Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,600&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+/* Layout: a single reading column of panel-switched charts and tables, with methodology and caveats below. */
+:root {
+  --bg: #f7f8f7; --surface: #ffffff; --fg: #15191c; --muted: #5a6168; --line: #dde1e0; --accent: #1f5f8b;
+  --warn-bg: #fff4dc; --warn-fg: #7a4b00;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300; --s7: #4a3aa7; --s8: #e34948;
+  --f-display: "Fraunces", Georgia, serif; --f-body: "IBM Plex Sans", system-ui, sans-serif; --f-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #141716; --surface: #1c201f; --fg: #eef1f0; --muted: #a3aaa8; --line: #2f3533; --accent: #7db6e0;
+  --warn-bg: #3a2c0d; --warn-fg: #f3cf85;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+  color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #141716; --surface: #1c201f; --fg: #eef1f0; --muted: #a3aaa8; --line: #2f3533; --accent: #7db6e0;
+  --warn-bg: #3a2c0d; --warn-fg: #f3cf85;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+  color-scheme: dark; }
+body { background: var(--bg); color: var(--fg); font: 15px/1.55 var(--f-body); }
+.wrap { max-width: 1080px; margin: 0 auto; padding-inline: 16px; padding-block: 28px 64px; display: grid; gap: 28px; }
+h1 { font: 600 clamp(26px, 4vw, 34px)/1.15 var(--f-display); margin: 0; text-wrap: balance; }
+h2 { font: 600 20px/1.3 var(--f-display); margin: 0 0 10px; text-wrap: balance; }
+h3 { font: 600 15px/1.4 var(--f-body); margin: 14px 0 6px; }
+p, li { max-width: 72ch; }
+.lede { color: var(--muted); margin: 6px 0 0; }
+.eyebrow { font: 500 11px/1 var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+section { display: grid; gap: 10px; min-width: 0; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 16px; min-width: 0; }
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.tabs button { font: 500 13px var(--f-body); color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; cursor: pointer; }
+.tabs button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+.tabs button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+.chart-box { position: relative; height: 280px; min-width: 0; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+th, td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { font: 500 11px var(--f-mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+.note { background: var(--warn-bg); color: var(--warn-fg); border-radius: 6px; padding: 10px 14px; font-size: 13.5px; }
+.muted { color: var(--muted); }
+code { font: 12.5px var(--f-mono); }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Card panels · consumer paid subscriptions · data to <span id="asof"></span></div>
+    <h1>AI subscribers in card panels</h1>
+    <p class="lede">Paid subscribers to eight AI providers in the Consumer Edge US panel and five Fable European panels, built from web and Google Play card charges. A subscriber needs 35 days of panel tenure before their first payment, lapses with no renewal within 45 days of a monthly charge (365 + 35 for annual), dated one month after the last payment, and is removed from history entirely if they leave the panel.</p>
+  </header>
+
+  <section>
+    <div class="tabs" id="tabs" role="group" aria-label="Panel"></div>
+    <div id="panel-note" class="note" hidden></div>
+    <div class="note">The latest month is partial. Churn for the last ~45 days, recent gross adds and panel exits are provisional and will be revised as renewals and late data arrive.</div>
+  </section>
+
+  <section>
+    <h2>Latest month</h2>
+    <div class="panel scroll"><table id="latest"></table></div>
+    <p class="muted" id="latest-note"></p>
+  </section>
+
+  <section>
+    <h2>Subscribers and share</h2>
+    <div class="charts">
+      <div class="panel"><div class="eyebrow">Subscribers per 1,000 active panel members</div><div class="chart-box"><canvas id="c-pen" role="img" aria-label="Subscribers per 1,000 active members by provider"></canvas></div></div>
+      <div class="panel"><div class="eyebrow">Share of tracked paid subscribers</div><div class="chart-box"><canvas id="c-share" role="img" aria-label="Share of tracked subscribers by provider"></canvas></div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Flows by month</h2>
+    <div class="tabs" id="prov-tabs" role="group" aria-label="Provider"></div>
+    <div class="charts">
+      <div class="panel"><div class="eyebrow">Gross adds and churn</div><div class="chart-box"><canvas id="c-flow" role="img" aria-label="Monthly gross adds and churn"></canvas></div></div>
+      <div class="panel"><div class="eyebrow">Monthly churn rate</div><div class="chart-box"><canvas id="c-churn" role="img" aria-label="Monthly churn rate"></canvas></div></div>
+    </div>
+    <p class="muted">Gross adds exclude subscriptions later removed because the member left the panel. The removed share for recent months is shown in the latest-month table; it is still low for recent months, so they will be revised down as exits are observed.</p>
+  </section>
+
+  <section>
+    <h2>Plan mix</h2>
+    <div class="panel scroll"><table id="plans"></table></div>
+    <p class="muted">Average daily subscribers by plan for the last four months. Plans are tier × billing cycle (_M monthly, _A annual).</p>
+  </section>
+
+  <section id="methods">
+    <h2>Filters and caveats</h2>
+    <div id="methods-body"></div>
+  </section>
+</div>
+
+<script id="data" type="application/json">__DATA__</script>
+<script id="methods-data" type="application/json">__METHODS__</script>
+<script>
+const D = JSON.parse(document.getElementById('data').textContent);
+const METHODS = JSON.parse(document.getElementById('methods-data').textContent);
+const LABEL = {chatgpt:'ChatGPT', claude:'Claude', gemini:'Gemini', grok:'Grok (xAI)', grok_x:'X Premium+', muse:'Muse', cursor:'Cursor', perplexity:'Perplexity', chatgpt_raw:'ChatGPT (direct unmodelled)'};
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const color = p => css('--s' + (p === 'chatgpt_raw' ? 1 : D.providers.indexOf(p) + 1));
+let panel = D.panels.omega ? 'omega' : Object.keys(D.panels)[0], prov = 'chatgpt', charts = {};
+const fmt = (v, d = 0) => v == null || isNaN(v) ? '–' : v.toLocaleString('en-US', {maximumFractionDigits: d, minimumFractionDigits: d});
+const pct = (v, d = 1) => v == null || isNaN(v) ? '–' : (v * 100).toFixed(d) + '%';
+
+function lastFull(months) { return D.panels[panel].settled || months[months.length - 2]; }
+
+function renderTabs() {
+  const t = document.getElementById('tabs'); t.innerHTML = '';
+  Object.entries(D.names).filter(([k]) => D.panels[k]).forEach(([k, v]) => {
+    const b = document.createElement('button'); b.textContent = v; b.setAttribute('aria-pressed', k === panel);
+    b.onclick = () => { panel = k; renderAll(); }; t.appendChild(b);
+  });
+  const pt = document.getElementById('prov-tabs'); pt.innerHTML = '';
+  Object.keys(D.panels[panel].series).forEach(k => {
+    const b = document.createElement('button'); b.textContent = LABEL[k]; b.setAttribute('aria-pressed', k === prov);
+    b.onclick = () => { prov = k; renderAll(); }; pt.appendChild(b);
+  });
+}
+
+function renderLatest() {
+  const P = D.panels[panel], m = lastFull(P.months), i = P.months.indexOf(m);
+  document.getElementById('asof').textContent = P.months[P.months.length - 1] + ' (partial)';
+  let h = `<thead><tr><th>Provider</th><th>Subscribers</th><th>Share</th><th>Per 1k</th><th>Gross adds</th><th>Reactivations</th><th>Churn</th><th>Churn rate</th><th>Net adds</th><th>Adds removed (exit)</th></tr></thead><tbody>`;
+  Object.entries(P.series).forEach(([k, s]) => {
+    const net = s.gross_adds[i] != null && s.churn[i] != null ? s.gross_adds[i] - s.churn[i] : null;
+    const rem = s.gross_adds_raw[i] ? s.removed_exit[i] / s.gross_adds_raw[i] : null;
+    h += `<tr><td><span class="swatch" style="background:${color(k)}"></span>${LABEL[k]}</td><td>${fmt(s.subs[i])}</td><td>${pct(s.share[i])}</td><td>${fmt(s.per_1k[i], 1)}</td><td>${fmt(s.gross_adds[i])}</td><td>${fmt(s.reactivations[i])}</td><td>${fmt(s.churn[i])}</td><td>${pct(s.churn_rate[i])}</td><td>${fmt(net)}</td><td>${pct(rem)}</td></tr>`;
+  });
+  document.getElementById('latest').innerHTML = h + '</tbody>';
+  document.getElementById('latest-note').textContent = `${m}, the latest month whose churn is settled; later months are provisional. Subscribers are the average daily count. Unweighted panel counts.`;
+  const note = METHODS.panel_notes[panel];
+  const n = document.getElementById('panel-note'); n.hidden = !note; n.textContent = note || '';
+}
+
+function lineChart(id, field, opts = {}) {
+  const P = D.panels[panel], labels = P.months.slice(0, -1);
+  const ds = Object.entries(P.series).map(([k, s]) => ({label: LABEL[k], data: s[field].slice(0, -1), borderColor: color(k), backgroundColor: color(k), borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, spanGaps: false, tension: 0.2}));
+  draw(id, {type: 'line', data: {labels, datasets: ds}, options: base(opts)});
+}
+
+function base({percent = false} = {}) {
+  const ink = css('--muted'), grid = css('--line');
+  return {maintainAspectRatio: false, interaction: {mode: 'index', intersect: false}, animation: false,
+    plugins: {legend: {position: 'bottom', labels: {color: css('--fg'), boxWidth: 10, boxHeight: 10, font: {size: 11}}},
+      tooltip: {callbacks: {label: c => `${c.dataset.label}: ${percent ? pct(c.parsed.y) : fmt(c.parsed.y, 1)}`}}},
+    scales: {x: {ticks: {color: ink, maxTicksLimit: 8, font: {size: 11}}, grid: {display: false}, border: {color: grid}},
+      y: {beginAtZero: true, ticks: {color: ink, font: {size: 11}, callback: v => percent ? (v * 100).toFixed(0) + '%' : v.toLocaleString()}, grid: {color: grid}, border: {display: false}}}};
+}
+
+function draw(id, cfg) { if (charts[id]) charts[id].destroy(); charts[id] = new Chart(document.getElementById(id), cfg); }
+
+function renderFlows() {
+  const P = D.panels[panel]; if (!P.series[prov]) prov = Object.keys(P.series)[0];
+  const s = P.series[prov], labels = P.months.slice(0, -1);
+  draw('c-flow', {type: 'bar', data: {labels, datasets: [
+    {label: 'Gross adds', data: s.gross_adds.slice(0, -1), backgroundColor: css('--s1'), borderRadius: 3},
+    {label: 'Churn', data: s.churn.slice(0, -1), backgroundColor: css('--s2'), borderRadius: 3}]}, options: base()});
+  draw('c-churn', {type: 'line', data: {labels, datasets: [{label: 'Churn rate', data: s.churn_rate.slice(0, -1), borderColor: color(prov), backgroundColor: color(prov), borderWidth: 2, pointRadius: 0}]}, options: {...base({percent: true}), plugins: {...base({percent: true}).plugins, legend: {display: false}}}});
+}
+
+function renderPlans() {
+  const T = D.panels[panel].plans, cols = T.columns;
+  let h = '<thead><tr>' + cols.map(c => `<th>${c}</th>`).join('') + '</tr></thead><tbody>';
+  T.data.forEach(r => { h += '<tr>' + r.map((v, j) => `<td>${j === 0 ? LABEL[v] || v : j === 1 ? `<code>${v}</code>` : fmt(v)}</td>`).join('') + '</tr>'; });
+  document.getElementById('plans').innerHTML = h + '</tbody>';
+}
+
+function renderMethods() {
+  document.getElementById('methods-body').innerHTML = METHODS.html;
+}
+
+function renderAll() { renderTabs(); renderLatest(); lineChart('c-pen', 'per_1k'); lineChart('c-share', 'share', {percent: true}); renderFlows(); renderPlans(); }
+renderMethods(); renderAll();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', renderAll);
+new MutationObserver(renderAll).observe(document.documentElement, {attributes: true, attributeFilter: ['data-theme']});
+</script>
