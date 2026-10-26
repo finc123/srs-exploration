@@ -232,6 +232,57 @@ const BLOCKS = [
       go();
   } },
   { key: "engagement_daily", render(rows) {
+      const b = block("Web Data",
+        "SimilarWeb visits to each provider's web app (" + Object.entries({ ChatGPT: "chatgpt.com", Claude: "claude.ai", Gemini: "gemini.google.com", Grok: "grok.com",
+        Perplexity: "perplexity.ai", Muse: "muse.ai" }).map(([a, d]) => `${a} ${d}`).join(", ") + "): desktop + mobile web, subdomains included. " +
+        "Smoothing: Raw is the daily value; TR7D is the trailing 7-day mean, shown only where all 7 days have a value. " +
+        "Share is each site's visits over the six-site total that day. Days since launch counts from each app's day 0 (first day with app downloads; Muse: 2026-09-08). Muse starts at launch.");
+      b.el.insertAdjacentHTML("beforeend", `<div class="ctlrows"></div><div class="chart" style="height:340px"><canvas id="c_webdata"></canvas></div><p class="note" id="c_webdata_note"></p>`);
+      const st = { Metric: "Visits", Display: "Level", Smoothing: "TR7D", Geography: "US", Timeline: "Last 90 days", Scale: "Log" };
+      const note = document.getElementById("c_webdata_note");
+      const tr7 = s => s.map((_, i) => i < 6 || s.slice(i - 6, i + 1).some(v => v == null) ? null : sum(s.slice(i - 6, i + 1)) / 7);
+      const go = () => {
+        const dsl = st.Timeline === "Days since launch", share = st.Display === "Share", log = st.Scale === "Log";
+        const rs = rows.filter(r => r.SOURCE === "Web" && r.COUNTRY === st.Geography);
+        const labels = dsl ? Array.from({ length: Math.max(0, ...rs.filter(r => r.DAY_N >= 0 && r.DAY_N <= 365).map(r => r.DAY_N)) + 1 }, (_, i) => i) : CAL.slice(-90);
+        const at = new Map(labels.map((l, i) => [l, i])), xTitle = dsl ? "Days since launch" : undefined;
+        const vals = APPS.map(a => {
+          const v = labels.map(() => null);
+          for (const r of rs) if (r.APP === a) { const i = at.get(dsl ? r.DAY_N : r.DATE); if (i != null) v[i] = r.SESSIONS; }
+          // By date, a site before its first day (Muse before launch) has zero Muse visits, not unknown ones.
+          const first = rs.filter(r => r.APP === a).reduce((m, r) => r.DATE < m ? r.DATE : m, "9999");
+          if (!dsl) labels.forEach((d, i) => { if (d < first) v[i] = 0; });
+          return st.Smoothing === "TR7D" ? tr7(v) : v;
+        });
+        note.textContent = "";
+        if (share && dsl) {
+          draw("c_webdata", labels, [], { share: true, stacked: true, xTitle });
+          note.textContent = "Share is not shown against days since launch (each app's day 0 is a different date). Switch Display to Level, or Timeline to Last 90 days.";
+          return;
+        }
+        if (!share) {
+          draw("c_webdata", labels, APPS.map((a, i) => ({ ...line(a, log ? vals[i].map(v => v > 0 ? v : null) : vals[i], colorOf(a), a === "Muse" ? 3 : 1.5), spanGaps: dsl })),
+               { log, offset: !dsl, skipNull: true, xTitle, label: c => `${c.dataset.label}: ${fmtBig(c.parsed.y)} visits` });
+          return;
+        }
+        const keep = labels.map((_, j) => vals.every(s => s[j] != null));
+        const tot = labels.map((_, j) => keep[j] ? sum(vals.map(s => s[j])) : null);
+        const shr = vals.map(s => s.map((v, j) => tot[j] ? v / tot[j] : null));
+        draw("c_webdata", labels, APPS.map((a, i) => ({ type: "bar", label: a, data: shr[i], stack: "s", borderWidth: 0, backgroundColor: alpha(colorOf(a), 0.7) })), {
+          stacked: true, share: true,
+          label: c => `${c.dataset.label}: ${fmtBig(vals[c.datasetIndex][c.dataIndex])} visits (${fmt(100 * shr[c.datasetIndex][c.dataIndex], 1)}%)`,
+          footer: items => items.length ? `Six-site total: ${fmtBig(tot[items[0].dataIndex])}` : "",
+        });
+      };
+      const host = b.el.querySelector(".ctlrows");
+      for (const [name, opts] of [["Metric", ["Visits"]], ["Display", ["Level", "Share"]], ["Smoothing", ["Raw", "TR7D"]], ["Geography", ["US", "WW"]],
+                                  ["Timeline", ["Last 90 days", "Days since launch"]], ["Scale", ["Log", "Linear"]]]) {
+        host.insertAdjacentHTML("beforeend", `<span class="lab">${name}</span>`);
+        buttons(host, name, opts, st, go);
+      }
+      go();
+  } },
+  { key: "engagement_daily", render(rows) {
       const b = block("Time Spent",
         "Total daily time spent (minutes), time per user (minutes / DAU; app only, as SimilarWeb has no daily users), session count and time per session, for the six assistants' apps (SensorTower: iPhone + Android phone) and web apps " +
         "(SimilarWeb: desktop + mobile web; a session is a visit). Time per session and per user are ratios of totals; their TR7D is 7-day minutes over 7-day sessions or DAU. " +
@@ -297,10 +348,10 @@ const BLOCKS = [
   } },
   { key: "channel_flows", render(rows) {
       const b = block("Gross adds, churn and net adds from sign-up and cancellation emails (US)",
-        "Gross adds = first sign-up or paid subscription email in a series; churn = cancellation emails; net adds = gross adds − churn. No lapse modelling. " +
-        "Combined = the provider's channels deduped when the same mailbox shows the same event in two channels within 45 days: direct + Google Play + iTunes, " +
+        "Gross adds = first sign-up or paid subscription email in a series; churn = cancellation emails, counted only while the mailbox is subscribed (a sign-up since its previous cancellation, on any channel); net adds = gross adds − churn. No lapse modelling. " +
+        "Panel: mailboxes that joined before 2023 and are still active. Combined = the sum of the provider's channels: direct + Google Play + iTunes, " +
         "except Grok and Perplexity (Google Play + iTunes: Grok has no direct sender; Perplexity direct is mostly free promotional sign-ups). " +
-        "Plans (Combined only): the tier the emails name; a change of plan within a subscription is a switch (out of the old plan, into the new), not churn plus an add. Muse Code is Muse's direct plan. Panel counts. The last month is month-to-date (labelled MTD) and rises as the month fills.");
+        "Grok includes X Premium+. Panel counts. The last month is month-to-date (labelled MTD) and rises as the month fills.");
       if (!rows.length) return empty(b, "Email-based flows");
       b.el.insertAdjacentHTML("beforeend", `<div class="stack">${col("c_cf_flow", "Monthly gross adds, churn and net adds")}${col("c_cf_cum", "Cumulative net adds since January 2025 (Combined)")}</div>`);
       const SRC = { "Combined": "combined", "Direct": "direct", "Google Play": "google_play", "iTunes": "itunes" };
@@ -339,7 +390,7 @@ const BLOCKS = [
         }
       };
       const planButtons = () => { planHost.innerHTML = ""; if (!plansOf(st.Provider).includes(st.Plan)) st.Plan = "All plans";
-        buttons(planHost, "Plan", ["All plans", ...plansOf(st.Provider)], st, go); };
+        if (plansOf(st.Provider).length) buttons(planHost, "Plan", ["All plans", ...plansOf(st.Provider)], st, go); };  // no plan rows: provider level only
       buttons(b.ctls, "Provider", PROV, st, () => { planButtons(); go(); });
       b.ctls.appendChild(planHost); planButtons();
       buttons(document.getElementById("c_cf_flow_ctl"), "Source", Object.keys(SRC), st, go);
@@ -375,6 +426,7 @@ const BLOCKS = [
       buttons(b.ctls, "View", ["Share", "Level"], st, go); go();
   } },
   { key: "channel_flows", render(rows) {
+      if (!rows.some(r => r.CHANNEL === "combined" && r.PLAN !== "all")) return;  // plan split not exported (provider level only)
       const b = block("Plan mix: net subscribers added since January 2025 by plan (US, emails)",
         "Combined net adds by plan (gross adds + switches in − cancellations − switches out) summed from January 2025, for one provider. " +
         "Share is over plans with a positive total; Unspecified (cancellations that name no plan, with no earlier email) and any negative plan show in Level only. The last month is month-to-date.");
