@@ -231,6 +231,70 @@ const BLOCKS = [
       }
       go();
   } },
+  { key: "engagement_daily", render(rows) {
+      const b = block("Time Spent",
+        "Total daily time spent (minutes), time per user (minutes / DAU; app only, as SimilarWeb has no daily users), session count and time per session, for the six assistants' apps (SensorTower: iPhone + Android phone) and web apps " +
+        "(SimilarWeb: desktop + mobile web; a session is a visit). Time per session and per user are ratios of totals; their TR7D is 7-day minutes over 7-day sessions or DAU. " +
+        "Share is an app's total over the six-app total that day (Total Daily Time Spent and Session Count only), shown only on days every app has a value. " +
+        "Days since launch counts from each app's day 0 (first day with app downloads; Muse: 2026-09-08), for app and web alike. A web visit is not an app session: compare apps within a source.");
+      b.el.insertAdjacentHTML("beforeend", `<div class="ctlrows"></div><div class="chart" style="height:340px"><canvas id="c_eng"></canvas></div><p class="note" id="c_eng_note"></p>`);
+      const st = { Source: "App", Metric: "Total Daily Time Spent", Display: "Level", Smoothing: "TR7D", Geography: "US", Timeline: "Last 90 days", Scale: "Log" };
+      const note = document.getElementById("c_eng_note");
+      const tr7 = s => s.map((_, i) => i < 6 || s.slice(i - 6, i + 1).some(v => v == null) ? null : sum(s.slice(i - 6, i + 1)) / 7);
+      const go = () => {
+        const dsl = st.Timeline === "Days since launch", smooth = st.Smoothing === "TR7D", log = st.Scale === "Log";
+        const perSession = st.Metric === "Time Spent per Session", perUser = st.Metric === "Total Daily Time Spent per User", share = st.Display === "Share";
+        const rs = rows.filter(r => r.SOURCE === st.Source && r.COUNTRY === st.Geography);
+        const labels = dsl ? Array.from({ length: Math.max(0, ...rs.filter(r => r.DAY_N >= 0 && r.DAY_N <= 365).map(r => r.DAY_N)) + 1 }, (_, i) => i) : CAL.slice(-90);
+        const at = new Map(labels.map((l, i) => [l, i]));
+        const vals = APPS.map(a => {
+          const mins = labels.map(() => null), sess = labels.map(() => null), users = labels.map(() => null);
+          for (const r of rs) if (r.APP === a) { const i = at.get(dsl ? r.DAY_N : r.DATE); if (i != null) { mins[i] = r.MINUTES; sess[i] = r.SESSIONS; users[i] = r.DAU ?? null; } }
+          // By date, an app before its first day (e.g. Muse before 2026-09-08) has zero usage, not unknown usage.
+          const first = rs.filter(r => r.APP === a).reduce((m, r) => r.DATE < m ? r.DATE : m, "9999");
+          if (!dsl) labels.forEach((d, i) => { if (d < first) { mins[i] = 0; sess[i] = 0; users[i] = 0; } });
+          const [m, s, u] = smooth ? [tr7(mins), tr7(sess), tr7(users)] : [mins, sess, users];
+          const per = den => m.map((v, i) => v != null && den[i] ? v / den[i] : null);
+          return perSession ? per(s) : perUser ? per(u) : st.Metric === "Session Count" ? s : m;
+        });
+        const xTitle = dsl ? "Days since launch" : undefined;
+        note.textContent = "";
+        if (share && (perSession || perUser || dsl)) {
+          draw("c_eng", labels, [], { share: true, stacked: true, xTitle });
+          note.textContent = perSession || perUser
+            ? `Share is not meaningful for time per ${perUser ? "user" : "session"}. Switch Display to Level, or Metric to Total Daily Time Spent or Session Count.`
+            : "Share is not shown against days since launch (each app's day 0 is a different date). Switch Display to Level, or Timeline to Last 90 days.";
+          return;
+        }
+        const missing = APPS.filter((a, i) => vals[i].every(v => v == null));
+        if (!share) {
+          draw("c_eng", labels, APPS.map((a, i) => ({ ...line(a, log ? vals[i].map(v => v > 0 ? v : null) : vals[i], colorOf(a), a === "Muse" ? 3 : 1.5), spanGaps: dsl })), {
+            log, offset: !dsl, skipNull: true, xTitle,
+            label: c => `${c.dataset.label}: ${perSession || perUser ? fmt(c.parsed.y, 1, 1) + " min" : fmtBig(c.parsed.y) + (st.Metric === "Session Count" ? "" : " min")}`,
+          });
+        } else {
+          const keep = labels.map((_, j) => vals.every(s => s[j] != null));
+          const tot = labels.map((_, j) => keep[j] ? sum(vals.map(s => s[j])) : null);
+          const shr = vals.map(s => s.map((v, j) => tot[j] ? v / tot[j] : null));
+          draw("c_eng", labels, APPS.map((a, i) => ({ type: "bar", label: a, data: shr[i], stack: "s", borderWidth: 0, backgroundColor: alpha(colorOf(a), 0.7) })), {
+            stacked: true, share: true, xTitle,
+            label: c => `${c.dataset.label}: ${fmtBig(vals[c.datasetIndex][c.dataIndex])} (${fmt(100 * shr[c.datasetIndex][c.dataIndex], 1)}%)`,
+            footer: items => items.length ? `Six-app total: ${fmtBig(tot[items[0].dataIndex])}` : "",
+          });
+        }
+        if (perUser && st.Source === "Web") note.textContent = "SimilarWeb has no daily unique users, so time per user is App only.";
+        else if (missing.length) note.textContent = `No ${st.Source.toLowerCase()} data for ${missing.join(", ")} in this view` +
+          (share ? ", so Share (which needs all six apps) is blank." : ".");
+      };
+      const host = b.el.querySelector(".ctlrows");
+      for (const [name, opts] of [["Source", ["App", "Web"]], ["Metric", ["Total Daily Time Spent", "Total Daily Time Spent per User", "Time Spent per Session", "Session Count"]],
+                                  ["Display", ["Level", "Share"]], ["Smoothing", ["Raw", "TR7D"]], ["Geography", ["US", "WW"]],
+                                  ["Timeline", ["Last 90 days", "Days since launch"]], ["Scale", ["Log", "Linear"]]]) {
+        host.insertAdjacentHTML("beforeend", `<span class="lab">${name}</span>`);
+        buttons(host, name, opts, st, go);
+      }
+      go();
+  } },
   { key: "channel_flows", render(rows) {
       const b = block("Gross adds, churn and net adds from sign-up and cancellation emails (US)",
         "Gross adds = first sign-up or paid subscription email in a series; churn = cancellation emails; net adds = gross adds − churn. No lapse modelling. " +
