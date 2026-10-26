@@ -346,12 +346,14 @@ const BLOCKS = [
       }
       go();
   } },
-  { key: "email_adds_daily", render(rows, sections) {
+  { key: "email_flows_daily", render(rows, sections) {
       const b = block("Provider Market Share",
-        "Gross adds from the e-receipt panel (US): the first sign-up or paid subscription email in a series, summed over each provider's channels (direct + Google Play + iTunes; Grok and Perplexity Google Play + iTunes). " +
-        "Panel: mailboxes that joined before 2023 and are still active. Level = gross adds; Share = a provider's gross adds over the six-provider total; % of Panel = gross adds over every mailbox in the panel, stacked so the total is the share of the panel adding any tracked provider. " +
+        "Gross adds, churn and net adds from the e-receipt panel (US), as in the monthly email flows: gross add = the first sign-up or paid subscription email in a series; churn = a cancellation email while the mailbox is subscribed; net adds = gross adds − churn. " +
+        "Each provider's channels are summed (direct + Google Play + iTunes; Grok and Perplexity Google Play + iTunes). Panel: mailboxes that joined before 2023 and are still active. " +
+        "Level = the count; Share = a provider's value over the six-provider total (Net Adds: over providers with positive net adds); % of Panel = the value over every mailbox in the panel, stacked so the total is the share of the panel across all tracked providers. " +
         "Smoothing: TR7D is the trailing 7-day mean (daily views only). Days since launch counts from each provider's US app day 0 (Muse: 2026-09-08), for its first year. Monthly starts January 2025; the last month is month-to-date (MTD, lighter).");
       b.el.insertAdjacentHTML("beforeend", `<div class="ctlrows"></div><div class="chart" style="height:340px"><canvas id="c_mshare"></canvas></div><p class="note" id="c_mshare_note"></p>`);
+      const M = { "Gross Adds": "GROSS_ADDS", "Churn": "CHURN", "Net Adds": "NET_ADDS" };
       const st = { Metric: "Gross Adds", Display: "Level", Smoothing: "TR7D", Geography: "US", Timeline: "Last 90 days" };
       const note = document.getElementById("c_mshare_note"), panel = rows[0]?.PANEL;
       // The latest order date is still filling in (NIQ adds recent days over the following mornings): leave it out.
@@ -361,11 +363,11 @@ const BLOCKS = [
       const tr7 = s => s.map((_, i) => i < 6 || s.slice(i - 6, i + 1).some(v => v == null) ? null : sum(s.slice(i - 6, i + 1)) / 7);
       const go = () => {
         const dsl = st.Timeline === "Days since launch", monthly = st.Timeline === "Monthly", smooth = st.Smoothing === "TR7D" && !monthly;
-        const disp = st.Display, xTitle = dsl ? "Days since launch" : undefined;
+        const disp = st.Display, xTitle = dsl ? "Days since launch" : undefined, m = M[st.Metric], what = st.Metric.toLowerCase();
         let labels, xl, vals;
         if (monthly) {
           labels = months; xl = months.map(m => m.slice(0, 7) + (mtd.has(m) ? " (MTD)" : ""));
-          vals = PROV.map(p => series(flows, "GROSS_ADDS", { PROVIDER: p }, months, "MONTH").map(v => v ?? 0));
+          vals = PROV.map(p => series(flows, m, { PROVIDER: p }, months, "MONTH").map(v => v ?? 0));
         } else {
           const last = dates[dates.length - 1] ?? "";
           // By date, smooth over every date before taking the last 90, so the window's first days have a TR7D.
@@ -375,7 +377,7 @@ const BLOCKS = [
           const at = new Map(full.map((l, i) => [l, i]));
           vals = PROV.map(p => {
             const v = full.map(() => dsl ? null : 0);
-            for (const r of rows) if (r.PROVIDER === p && r.DATE <= last) { const i = at.get(dsl ? r.DAY_N : r.DATE); if (i != null) v[i] = r.GROSS_ADDS; }
+            for (const r of rows) if (r.PROVIDER === p && r.DATE <= last) { const i = at.get(dsl ? r.DAY_N : r.DATE); if (i != null) v[i] = r[m]; }
             return (smooth ? tr7(v) : v).slice(full.length - labels.length);
           });
         }
@@ -391,14 +393,16 @@ const BLOCKS = [
           draw("c_mshare", xl, PROV.map((p, i) => monthly
               ? { type: "bar", label: NAMES[p], data: vals[i], borderWidth: 0, backgroundColor: fade(colorOf(p), 0.75) }
               : { ...line(NAMES[p], vals[i], colorOf(p), p === "muse" ? 3 : 1.5), spanGaps: dsl }),
-            { offset: monthly || !dsl, skipNull: true, xTitle, label: c => `${c.dataset.label}: ${fmtBig(c.parsed.y)} gross adds` });
+            { offset: monthly || !dsl, skipNull: true, xTitle, label: c => `${c.dataset.label}: ${fmtBig(c.parsed.y)} ${what}` });
         } else if (disp === "Share") {
-          const tot = labels.map((_, j) => sum(vals.map(s => s[j])));
-          const shr = vals.map(s => s.map((v, j) => tot[j] ? (v ?? 0) / tot[j] : null));
+          // Net adds can be negative: share is over providers with a positive value, as in the monthly share block.
+          const tot = labels.map((_, j) => sum(vals.map(s => Math.max(0, s[j] ?? 0))));
+          const shr = vals.map(s => s.map((v, j) => tot[j] ? Math.max(0, v ?? 0) / tot[j] : null));
+          if (vals.some(s => s.some(v => v < 0))) msgs.push("Providers with negative net adds on a date show 0% in Share; their value is in Level.");
           draw("c_mshare", xl, PROV.map((p, i) => ({ type: "bar", label: NAMES[p], data: shr[i], stack: "s", borderWidth: 0, backgroundColor: fade(colorOf(p), 0.7) })), {
             stacked: true, share: true,
             label: c => `${c.dataset.label}: ${fmtBig(vals[c.datasetIndex][c.dataIndex])} (${fmt(100 * shr[c.datasetIndex][c.dataIndex], 1)}%)`,
-            footer: items => items.length ? `Six-provider total: ${fmtBig(tot[items[0].dataIndex])}` : "",
+            footer: items => items.length ? `Total${m === "NET_ADDS" ? " (providers with positive net adds)" : ""}: ${fmtBig(tot[items[0].dataIndex])}` : "",
           });
         } else {
           const dig = monthly ? 2 : 3, pp = vals.map(s => s.map(v => v == null || !panel ? null : v / panel));
@@ -408,14 +412,14 @@ const BLOCKS = [
               : { type: "bar", label: NAMES[p], data: pp[i], stack: "s", borderWidth: 0, backgroundColor: fade(colorOf(p), 0.7) }), {
             stacked: !dsl, ratio: true, pctDigits: dig, offset: !dsl, skipNull: true, xTitle,
             label: c => `${c.dataset.label}: ${fmt(100 * c.parsed.y, dig + 1)}% (${fmtBig(vals[c.datasetIndex][c.dataIndex])})`,
-            footer: items => items.length && !dsl ? `Any tracked provider: ${fmt(100 * tot[items[0].dataIndex], dig + 1)}% of ${fmtBig(panel)} mailboxes` : "",
+            footer: items => items.length && !dsl ? `All tracked providers: ${fmt(100 * tot[items[0].dataIndex], dig + 1)}% of ${fmtBig(panel)} mailboxes` : "",
           });
           if (dsl) msgs.push("Against days since launch, % of Panel is shown as lines, not stacked: each provider's day 0 is a different date.");
         }
         note.textContent = msgs.join(" ");
       };
       const host = b.el.querySelector(".ctlrows");
-      for (const [name, opts] of [["Metric", ["Gross Adds"]], ["Display", ["Level", "Share", "% of Panel"]], ["Smoothing", ["Raw", "TR7D"]],
+      for (const [name, opts] of [["Metric", Object.keys(M)], ["Display", ["Level", "Share", "% of Panel"]], ["Smoothing", ["Raw", "TR7D"]],
                                   ["Geography", ["US"]], ["Timeline", ["Last 90 days", "Days since launch", "Monthly"]]]) {
         host.insertAdjacentHTML("beforeend", `<span class="lab">${name}</span>`);
         buttons(host, name, opts, st, go);

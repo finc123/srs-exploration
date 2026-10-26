@@ -1,7 +1,7 @@
 """Rebuild app/ai_consumer.json from the live sources, read-only, with the production exporter.
 
 Runs srs workflows/jobs/ai/consumer's export_dashboard_json with each srs_mcp.ai_consumer.* table swapped for its
-load SELECT (so nothing is written to Snowflake), email_flows and email_adds_daily built in-process by
+load SELECT (so nothing is written to Snowflake), email_flows and email_flows_daily built in-process by
 engine/email_flows.py (the daily table inlined as VALUES), and the S3
 put redirected to the local file (the previous one is kept as ai_consumer.json.bak). Snowflake connection "default".
 Run from exploration/ai: python app/refresh_local.py [srs checkout; default ../../srs]."""
@@ -43,9 +43,9 @@ print("email flows: reading receipts ...", flush=True)
 flows, daily, end = F.build(fetch(F.READ_SQL.format(schema="srs_mcp.ai_consumer")))
 panel = int(fetch(F.PANEL_SQL).iloc[0, 0])
 print(f"email flows built, data end {end.date()}, panel {panel:,}", flush=True)
-SUBS["email_adds_daily"] = ("SELECT column1 AS region, column2 AS provider, column3::DATE AS date, column4 AS gross_adds, "
-                            f"{panel} AS panel FROM VALUES " + ",".join(
-    f"('{r.region}','{r.provider}','{r.date.date()}',{r.gross_adds})" for r in daily.itertuples()))
+SUBS["email_flows_daily"] = ("SELECT column1 AS region, column2 AS provider, column3::DATE AS date, column4 AS gross_adds, "
+                             f"column5 AS churn, column6 AS net_adds, {panel} AS panel FROM VALUES " + ",".join(
+    f"('{r.region}','{r.provider}','{r.date.date()}',{r.gross_adds},{r.churn},{r.net_adds})" for r in daily.itertuples()))
 flows_sec = pd.DataFrame({
     "MONTH": flows.month.dt.strftime("%Y-%m-%d"), "PROVIDER": flows.provider, "CHANNEL": flows.channel,
     "PLAN": flows.plan, "GROSS_ADDS": flows.gross_adds, "CHURN": flows.churn, "SWITCH_IN": flows.switch_in,
@@ -54,7 +54,7 @@ flows_sec = pd.DataFrame({
 
 
 def query(sql, warehouse):
-    if "ai_consumer.email_flows" in sql:
+    if re.search(r"ai_consumer\.email_flows\b", sql, flags=re.I):
         return flows_sec.copy()
     df = fetch(sql)
     df.columns = [c.upper() for c in df.columns]
