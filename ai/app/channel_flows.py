@@ -2,13 +2,13 @@
 (srs workflows/jobs/ai/consumer: engine/email_flows.py -> email_flows table -> export/). It runs the production
 module on the notebook's cached rows (.cache/channel_cmp/raw.parquet), then uses the exporter's own section list,
 tiles, methodology and coverage notes; the app and web sections are kept from the existing app/ai_consumer.json.
-Run from exploration/ai: python app/channel_flows.py [srs worktree; default ../../srs-ai-consumer]."""
+Run from exploration/ai: python app/channel_flows.py [srs worktree; default ../../srs]."""
 import json, sys
 from datetime import datetime, timezone
 from pathlib import Path
 import pandas as pd
 
-SRS = Path(sys.argv[1] if len(sys.argv) > 1 else "../../srs-ai-consumer")
+SRS = Path(sys.argv[1] if len(sys.argv) > 1 else "../../srs")
 JOB = SRS / "workflows/jobs/ai/consumer/artifacts"
 sys.path[:0] = [str(JOB / "engine"), str(JOB / "export"), str(SRS / "packages/srs-core")]
 import email_flows as F  # noqa: E402

@@ -1,6 +1,6 @@
 """Builds ai_subs_methodology.html: a bookmarkable explainer of how the ai_consumer job measures gross adds,
 churn and subscribers from e-receipts. Data tables are embedded from:
-  - srs-ai-consumer/.../engine/params/lapse_windows.csv (windows, capture, churn-rate source)
+  - srs/.../engine/params/lapse_windows.csv (windows, capture, churn-rate source)
   - docs/plan_channel.csv (receipt_events: paid receipts by region x provider x plan x channel, Oct 2025 - Oct 2026)
 Run: python build_methodology_html.py
 """
@@ -10,7 +10,7 @@ from pathlib import Path
 import pandas as pd
 
 HERE = Path(__file__).resolve().parent
-WINDOWS = HERE.parents[2] / "srs-ai-consumer/workflows/jobs/ai/consumer/artifacts/engine/params/lapse_windows.csv"
+WINDOWS = HERE.parents[2] / "srs/workflows/jobs/ai/consumer/artifacts/engine/params/lapse_windows.csv"
 
 w = pd.read_csv(WINDOWS)[["region", "prov", "channel", "capture_all", "capture_R", "W_monthly", "W_source", "rate_source"]]
 p = pd.read_csv(HERE / "plan_channel.csv")

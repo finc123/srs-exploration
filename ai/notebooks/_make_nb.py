@@ -32,7 +32,7 @@ def q(sql):
 
 REGION = "us"
 COUNTRY = "us" if REGION == "us" else "eu"
-WINDOWS = pd.read_csv("../../../srs-ai-consumer/workflows/jobs/ai/consumer/artifacts/engine/params/lapse_windows.csv")
+WINDOWS = pd.read_csv("../../../srs/workflows/jobs/ai/consumer/artifacts/engine/params/lapse_windows.csv")
 DATA_END = pd.Timestamp(q(f"SELECT MAX(dt) AS d FROM srs_mcp.ai_consumer.receipt_events WHERE region = '{REGION}'").d[0])
 print("data end:", DATA_END.date())
 WINDOWS[WINDOWS.region == REGION][["prov", "channel", "capture_all", "W_monthly", "W_source", "rate_source"]]
