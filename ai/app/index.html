@@ -49,6 +49,8 @@
                 padding: 3px 9px; font: inherit; font-size: 12px; cursor: pointer; }
   .ctl button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
   .chart { position: relative; height: 280px; }
+  .ctlrows { display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; align-items: center; margin: 0 0 12px; }
+  .ctlrows .lab { color: var(--muted); font-size: 12px; font-weight: 600; }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   .grid2 > div, .stack > div { min-width: 0; }
   .stack { display: grid; grid-template-columns: 1fr; gap: 16px; }
@@ -110,7 +112,8 @@ function draw(id, labels, datasets, opts = {}) {
   datasets = datasets.map(d => hidden.has(d.label) ? { ...d, hidden: true } : d);
   old?.destroy();
   const grid = css("--line"), ink = css("--muted");
-  const tick = v => opts.share || opts.ratio ? fmt(v * 100, 0) + "%" : fmtBig(v);
+  const tick = v => opts.share || opts.ratio ? fmt(v * 100, 0) + "%"
+    : opts.log && ![1, 2, 5].some(k => Math.abs(v / 10 ** Math.floor(Math.log10(v)) - k) < 1e-6) ? null : fmtBig(v);  // log: label 1/2/5 x 10^n only
   charts[id] = new Chart(document.getElementById(id), {
     data: { labels, datasets },
     options: {
@@ -176,6 +179,58 @@ const empty = (b, what) => b.el.insertAdjacentHTML("beforeend", `<p class="empty
 const col = (id, title) => `<div><div class="chead"><span>${esc(title)}</span><div class="ctl-host" id="${id}_ctl"></div></div><div class="chart"><canvas id="${id}"></canvas></div></div>`;
 
 const BLOCKS = [
+  { key: "app_usage_daily", render(rows, sections) {
+      const b = block("App Data",
+        "SensorTower downloads and daily active users for the six assistants' official apps (iPhone + Android, matched by SensorTower product key). " +
+        "Smoothing: Raw is the daily value; TR7D is the trailing 7-day mean, shown only where all 7 days have a value. " +
+        "Share is each app's slice of the six-app total, shown only on days every app has a value. " +
+        "Days since launch counts from each app's day 0 (first day with downloads; Muse: public launch 2026-09-08), for each app's first year.");
+      b.el.insertAdjacentHTML("beforeend", `<div class="ctlrows"></div><div class="chart" style="height:340px"><canvas id="c_app"></canvas></div><p class="note" id="c_app_note"></p>`);
+      const st = { Metric: "Downloads", Display: "Level", Smoothing: "TR7D", Geography: "US", Timeline: "Last 90 days", Scale: "Log" };
+      const launch = sections.app_launch || [], note = document.getElementById("c_app_note");
+      // Trailing 7-day mean over consecutive points, null unless all 7 are present.
+      const tr7 = s => s.map((_, i) => i < 6 || s.slice(i - 6, i + 1).some(v => v == null) ? null : sum(s.slice(i - 6, i + 1)) / 7);
+      const go = () => {
+        const m = st.Metric === "DAU" ? "DAU" : "DOWNLOADS", log = st.Scale === "Log", smooth = st.Smoothing === "TR7D";
+        const dsl = st.Timeline === "Days since launch", share = st.Display === "Share";
+        let labels, raw;
+        if (dsl) {
+          const rs = launch.filter(r => r.COUNTRY === st.Geography);
+          labels = Array.from({ length: Math.max(0, ...rs.map(r => r.DAY_N)) + 1 }, (_, i) => i);
+          raw = APPS.map(a => { const d = labels.map(() => null); for (const r of rs) if (r.APP === a) d[r.DAY_N] = r[m]; return smooth ? tr7(d) : d; });
+        } else {
+          labels = CAL.slice(-90);
+          raw = APPS.map(a => series(rows, smooth ? m + "_TR7D" : m, { APP: a, COUNTRY: st.Geography }, labels));
+        }
+        note.textContent = "";
+        if (share && dsl) {  // apps launched years apart: a share of a cross-app total at the same day since launch is not defined
+          draw("c_app", labels, [], { share: true, stacked: true, xTitle: "Days since launch" });
+          note.textContent = "Share is not shown against days since launch (each app's day 0 is a different date). Switch Display to Level, or Timeline to Last 90 days.";
+          return;
+        }
+        if (!share) {
+          draw("c_app", labels, APPS.map((a, i) => ({ ...line(a, log ? raw[i].map(v => v > 0 ? v : null) : raw[i], colorOf(a), a === "Muse" ? 3 : 1.5),
+                                                      spanGaps: dsl })),
+               { log, offset: !dsl, skipNull: true, xTitle: dsl ? "Days since launch" : undefined });
+          return;
+        }
+        const keep = labels.map((_, j) => raw.every(s => s[j] != null));
+        const tot = labels.map((_, j) => keep[j] ? sum(raw.map(s => s[j])) : null);
+        const shr = raw.map(s => s.map((v, j) => tot[j] ? (v ?? 0) / tot[j] : null));
+        draw("c_app", labels, APPS.map((a, i) => ({ type: "bar", label: a, data: shr[i], stack: "s", borderWidth: 0, backgroundColor: alpha(colorOf(a), 0.7) })), {
+          stacked: true, share: true,
+          label: c => `${c.dataset.label}: ${fmtBig(raw[c.datasetIndex][c.dataIndex])} (${fmt(100 * shr[c.datasetIndex][c.dataIndex], 1)}%)`,
+          footer: items => items.length ? `Total: ${fmtBig(tot[items[0].dataIndex])}` : "",
+        });
+      };
+      const host = b.el.querySelector(".ctlrows");
+      for (const [name, opts] of [["Metric", ["Downloads", "DAU"]], ["Display", ["Level", "Share"]], ["Smoothing", ["Raw", "TR7D"]],
+                                  ["Geography", ["US", "WW"]], ["Timeline", ["Last 90 days", "Days since launch"]], ["Scale", ["Log", "Linear"]]]) {
+        host.insertAdjacentHTML("beforeend", `<span class="lab">${name}</span>`);
+        buttons(host, name, opts, st, go);
+      }
+      go();
+  } },
   { key: "channel_flows", render(rows) {
       const b = block("Gross adds, churn and net adds from sign-up and cancellation emails (US)",
         "Gross adds = first sign-up or paid subscription email in a series; churn = cancellation emails; net adds = gross adds − churn. No lapse modelling. " +
@@ -277,28 +332,6 @@ const BLOCKS = [
         });
       };
       buttons(b.ctls, "Provider", PROV, st, go); buttons(b.ctls, "View", ["Share", "Level"], st, go); go();
-  } },
-  { key: "app_usage_daily", render(rows) {
-      const b = block("App usage share (SensorTower)",
-        "Stacked daily values across the six assistants' official apps (iPhone + Android, matched by SensorTower product key): bar height is the total, segments are each app. A day is shown only when every launched app has a value. Switch View to Share for the 100% split.");
-      b.el.insertAdjacentHTML("beforeend", `<div class="chart" style="height:320px"><canvas id="c_share"></canvas></div>`);
-      const st = { Metric: "DAU", Country: "US", View: "Share", Range: "All" }, apps = APPS;
-      const go = () => {
-        const m = st.Metric === "DAU" ? "DAU" : "DOWNLOADS", dates = range(st.Range);
-        const raw = apps.map(a => series(rows, m, { APP: a, COUNTRY: st.Country }, dates));
-        const keep = dates.map((_, j) => apps.every((a, i) => raw[i][j] != null));
-        const lvl = raw.map(s => s.map((v, j) => keep[j] ? v ?? 0 : null));
-        const tot = dates.map((_, j) => keep[j] ? sum(lvl.map(s => s[j])) : null);
-        const shr = lvl.map(s => s.map((v, j) => tot[j] ? v / tot[j] : null));
-        draw("c_share", dates, apps.map((a, i) => ({ type: "bar", label: a, data: st.View === "Share" ? shr[i] : lvl[i], stack: "s", borderWidth: 0,
-                                                     backgroundColor: alpha(colorOf(a), 0.7) })), {
-          stacked: true, share: st.View === "Share",
-          label: c => `${c.dataset.label}: ${fmtBig(lvl[c.datasetIndex][c.dataIndex])} (${fmt(100 * shr[c.datasetIndex][c.dataIndex], 1)}%)`,
-          footer: items => items.length ? `Total: ${fmtBig(tot[items[0].dataIndex])}` : "",
-        });
-      };
-      buttons(b.ctls, "Metric", ["DAU", "Downloads"], st, go); buttons(b.ctls, "Country", ["US", "WW"], st, go);
-      buttons(b.ctls, "View", ["Share", "Level"], st, go); buttons(b.ctls, "Range", ["All", "Last 90 days"], st, go); go();
   } },
   { key: "app_launch", render(rows) {
       const b = block("App launch benchmark: downloads and DAU by day since launch",
