@@ -8,7 +8,7 @@ Muse launched on 2026-09-08. Card and e-receipt windows start 2026-08-01 to give
 
 **Why two sources for subscriptions?** They see different halves of the market: card panels see web sign-ups billed directly by Meta (`METAPAY META.COM`), but Apple card descriptors carry no app name. E-receipts see App Store and Google Play subscriptions by name, but Meta's own web billing sends no receipt the panel captures. Neither is double-counted against the other.
 
-Complete-through dates for this build: cards 2026-10-16, e-receipts 2026-10-19.
+Complete-through dates for this build: cards 2026-10-21, e-receipts 2026-10-24.
 
 ## Launch benchmark: US downloads and DAU by day since launch (SensorTower)
 
