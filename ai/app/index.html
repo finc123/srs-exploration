@@ -113,7 +113,7 @@ function draw(id, labels, datasets, opts = {}) {
   old?.destroy();
   const grid = css("--line"), ink = css("--muted");
   const tick = v => opts.share || opts.ratio ? fmt(v * 100, opts.pctDigits ?? 0) + "%"
-    : opts.log && ![1, 2, 5].some(k => Math.abs(v / 10 ** Math.floor(Math.log10(v)) - k) < 1e-6) ? null : fmtBig(v);  // log: label 1/2/5 x 10^n only
+    : opts.log && ![1, 2, 5].some(k => Math.abs(v / 10 ** Math.floor(Math.log10(v)) - k) < 1e-6) ? null : (opts.money ? "$" : "") + fmtBig(v);  // log: label 1/2/5 x 10^n only
   charts[id] = new Chart(document.getElementById(id), {
     data: { labels, datasets },
     options: {
@@ -351,39 +351,63 @@ const BLOCKS = [
         "Gross adds, churn and net adds from the e-receipt panel (US), as in the monthly email flows: gross add = the first sign-up or paid subscription email in a series; churn = a cancellation email while the mailbox is subscribed; net adds = gross adds − churn. " +
         "Each provider's channels are summed (direct + Google Play + iTunes; Grok and Perplexity Google Play + iTunes). Panel: mailboxes that joined before 2023 and are still active. " +
         "Level = the count; Share = a provider's value over the six-provider total (Net Adds: over providers with positive net adds); % of Panel = the value over every mailbox in the panel, stacked so the total is the share of the panel across all tracked providers. " +
+        "Spend = observable spend on consumer AI plans in the card panel (US, unweighted): the amounts charged on web and Google Play billing, by charge date (annual plans on the day charged). Apple App Store charges don't name the provider, so Apple-heavy providers (Grok, ChatGPT) are understated. Gemini includes 2 TB from 2026-01-27; Grok includes X Premium+. % of Panel for Spend = a provider's AI-plan spend over all panel spend at brand-tagged merchants that day (bank transfers, rent and bills are untagged and left out). The last 10 days are left out while card transactions post. " +
         "Smoothing: TR7D is the trailing 7-day mean (daily views only). Days since launch counts from each provider's US app day 0 (Muse: 2026-09-08), for its first year. Monthly starts January 2025; the last month is month-to-date (MTD, lighter).");
       b.el.insertAdjacentHTML("beforeend", `<div class="ctlrows"></div><div class="chart" style="height:340px"><canvas id="c_mshare"></canvas></div><p class="note" id="c_mshare_note"></p>`);
-      const M = { "Gross Adds": "GROSS_ADDS", "Churn": "CHURN", "Net Adds": "NET_ADDS" };
+      const M = { "Gross Adds": "GROSS_ADDS", "Churn": "CHURN", "Net Adds": "NET_ADDS", "Spend": "SPEND" };
       const st = { Metric: "Gross Adds", Display: "Level", Smoothing: "TR7D", Geography: "US", Timeline: "Last 90 days" };
-      const note = document.getElementById("c_mshare_note"), panel = rows[0]?.PANEL;
+      const note = document.getElementById("c_mshare_note"), emailPanel = rows[0]?.PANEL;
       // The latest order date is still filling in (NIQ adds recent days over the following mornings): leave it out.
-      const dates = uniq(rows, "DATE").slice(0, -1);
+      const emailDates = uniq(rows, "DATE").slice(0, -1);
       const flows = (sections.channel_flows || []).filter(r => r.CHANNEL === "combined" && r.PLAN === "all");
-      const months = uniq(flows, "MONTH"), mtd = new Set(flows.filter(r => r.PARTIAL).map(r => r.MONTH));
+      const emailMonths = uniq(flows, "MONTH"), emailMtd = new Set(flows.filter(r => r.PARTIAL).map(r => r.MONTH));
+      // Spend: card panel, by charge date. Already cut CARD_LAG days before the card data end, so every date is shown.
+      const spendRows = sections.card_spend_daily || [], spendDates = uniq(spendRows, "DATE"), spendLast = spendDates[spendDates.length - 1] ?? "";
+      const spendMonthly = spendRows.filter(r => r.DATE >= "2025-01-01").map(r => ({ ...r, MONTH: r.DATE.slice(0, 7) + "-01" }));
+      const spendMonths = uniq(spendMonthly, "MONTH");
+      const monthEnd = m => new Date(Date.UTC(+m.slice(0, 4), +m.slice(5, 7), 0)).toISOString().slice(0, 10);
+      const spendMtd = new Set(spendMonths.filter(m => spendLast < monthEnd(m)));
+      // Denominator of Spend % of Panel: total panel spend at tagged merchants per date (and per month).
+      const panelSpend = new Map((sections.card_panel_spend_daily || []).filter(r => r.DATE <= spendLast).map(r => [r.DATE, r.SPEND]));
+      const panelMonth = new Map();
+      for (const [d, v] of panelSpend) if (d >= "2025-01-01") { const k = d.slice(0, 7) + "-01"; panelMonth.set(k, (panelMonth.get(k) ?? 0) + v); }
+      const shift = (d, n) => { const x = new Date(d + "T00:00:00Z"); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+      const day0 = Object.fromEntries(PROV.map(p => { const r = spendRows.find(r => r.PROVIDER === p && r.DAY_N != null); return [p, r ? shift(r.DATE, -r.DAY_N) : null]; }));
       const tr7 = s => s.map((_, i) => i < 6 || s.slice(i - 6, i + 1).some(v => v == null) ? null : sum(s.slice(i - 6, i + 1)) / 7);
       const go = () => {
         const dsl = st.Timeline === "Days since launch", monthly = st.Timeline === "Monthly", smooth = st.Smoothing === "TR7D" && !monthly;
         const disp = st.Display, xTitle = dsl ? "Days since launch" : undefined, m = M[st.Metric], what = st.Metric.toLowerCase();
-        let labels, xl, vals;
+        const spend = m === "SPEND", src = spend ? spendRows : rows, dates = spend ? spendDates : emailDates;
+        const months = spend ? spendMonths : emailMonths, mtd = spend ? spendMtd : emailMtd, panel = emailPanel;
+        const usd = v => "$" + fmtBig(v);
+        let labels, xl, vals, dens;
         if (monthly) {
           labels = months; xl = months.map(m => m.slice(0, 7) + (mtd.has(m) ? " (MTD)" : ""));
-          vals = PROV.map(p => series(flows, m, { PROVIDER: p }, months, "MONTH").map(v => v ?? 0));
+          vals = PROV.map(p => series(spend ? spendMonthly : flows, m, { PROVIDER: p }, months, "MONTH").map(v => v ?? 0));
+          if (spend) dens = PROV.map(() => months.map(k => panelMonth.get(k) ?? null));
         } else {
           const last = dates[dates.length - 1] ?? "";
           // By date, smooth over every date before taking the last 90, so the window's first days have a TR7D.
-          const full = dsl ? Array.from({ length: Math.max(0, ...rows.filter(r => r.DAY_N >= 0 && r.DAY_N <= 365 && r.DATE <= last).map(r => r.DAY_N)) + 1 }, (_, i) => i)
+          const full = dsl ? Array.from({ length: Math.max(0, ...src.filter(r => r.DAY_N >= 0 && r.DAY_N <= 365 && r.DATE <= last).map(r => r.DAY_N)) + 1 }, (_, i) => i)
                            : dates;
           labels = xl = dsl ? full : dates.slice(-90);
           const at = new Map(full.map((l, i) => [l, i]));
           vals = PROV.map(p => {
             const v = full.map(() => dsl ? null : 0);
-            for (const r of rows) if (r.PROVIDER === p && r.DATE <= last) { const i = at.get(dsl ? r.DAY_N : r.DATE); if (i != null) v[i] = r[m]; }
+            for (const r of src) if (r.PROVIDER === p && r.DATE <= last) { const i = at.get(dsl ? r.DAY_N : r.DATE); if (i != null) v[i] = r[m]; }
             return (smooth ? tr7(v) : v).slice(full.length - labels.length);
+          });
+          // Spend % of Panel: the panel total on the same calendar date (days since launch: the provider's day 0 + n).
+          if (spend) dens = PROV.map(p => {
+            const d = full.map(l => (dsl ? (day0[p] ? panelSpend.get(shift(day0[p], l)) : null) : panelSpend.get(l)) ?? null);
+            return (smooth ? tr7(d) : d).slice(full.length - labels.length);
           });
         }
         const fade = (c, a) => monthly ? labels.map(m => alpha(c, mtd.has(m) ? a * 0.45 : a)) : alpha(c, a);
         const msgs = [];
+        if (spend && !spendRows.length) { draw("c_mshare", [], []); note.textContent = "No card spend data in this file: rebuild it with refresh_local.py."; return; }
         if (st.Smoothing === "TR7D" && monthly) msgs.push("TR7D does not apply to Monthly: monthly totals are shown.");
+        if (spend) msgs.push(`Spend: card panel, web and Google Play billing only (Apple is not visible), to ${spendLast}.`);
         if (disp === "Share" && dsl) {
           draw("c_mshare", xl, [], { share: true, stacked: true, xTitle });
           note.textContent = "Share is not shown against days since launch (each provider's day 0 is a different date). Switch Display to Level or % of Panel, or Timeline to Last 90 days or Monthly.";
@@ -393,7 +417,7 @@ const BLOCKS = [
           draw("c_mshare", xl, PROV.map((p, i) => monthly
               ? { type: "bar", label: NAMES[p], data: vals[i], borderWidth: 0, backgroundColor: fade(colorOf(p), 0.75) }
               : { ...line(NAMES[p], vals[i], colorOf(p), p === "muse" ? 3 : 1.5), spanGaps: dsl }),
-            { offset: monthly || !dsl, skipNull: true, xTitle, label: c => `${c.dataset.label}: ${fmtBig(c.parsed.y)} ${what}` });
+            { offset: monthly || !dsl, skipNull: true, xTitle, money: spend, label: c => `${c.dataset.label}: ${spend ? usd(c.parsed.y) : fmtBig(c.parsed.y) + " " + what}` });
         } else if (disp === "Share") {
           // Net adds can be negative: share is over providers with a positive value, as in the monthly share block.
           const tot = labels.map((_, j) => sum(vals.map(s => Math.max(0, s[j] ?? 0))));
@@ -401,9 +425,22 @@ const BLOCKS = [
           if (vals.some(s => s.some(v => v < 0))) msgs.push("Providers with negative net adds on a date show 0% in Share; their value is in Level.");
           draw("c_mshare", xl, PROV.map((p, i) => ({ type: "bar", label: NAMES[p], data: shr[i], stack: "s", borderWidth: 0, backgroundColor: fade(colorOf(p), 0.7) })), {
             stacked: true, share: true,
-            label: c => `${c.dataset.label}: ${fmtBig(vals[c.datasetIndex][c.dataIndex])} (${fmt(100 * shr[c.datasetIndex][c.dataIndex], 1)}%)`,
-            footer: items => items.length ? `Total${m === "NET_ADDS" ? " (providers with positive net adds)" : ""}: ${fmtBig(tot[items[0].dataIndex])}` : "",
+            label: c => `${c.dataset.label}: ${(spend ? usd : fmtBig)(vals[c.datasetIndex][c.dataIndex])} (${fmt(100 * shr[c.datasetIndex][c.dataIndex], 1)}%)`,
+            footer: items => items.length ? `Total${m === "NET_ADDS" ? " (providers with positive net adds)" : ""}: ${(spend ? usd : fmtBig)(tot[items[0].dataIndex])}` : "",
           });
+        } else if (spend) {
+          // A provider's AI-plan spend over total panel spend at tagged merchants (7-day sums over 7-day sums for TR7D).
+          const pp = vals.map((s, i) => s.map((v, j) => v == null || !dens[i][j] ? null : v / dens[i][j]));
+          const tot = labels.map((_, j) => sum(pp.map(s => s[j])));
+          draw("c_mshare", xl, PROV.map((p, i) => dsl
+              ? { ...line(NAMES[p], pp[i], colorOf(p), p === "muse" ? 3 : 1.5), spanGaps: true }
+              : { type: "bar", label: NAMES[p], data: pp[i], stack: "s", borderWidth: 0, backgroundColor: fade(colorOf(p), 0.7) }), {
+            stacked: !dsl, ratio: true, pctDigits: 3, offset: !dsl, skipNull: true, xTitle,
+            label: c => `${c.dataset.label}: ${fmt(100 * c.parsed.y, 4)}% (${usd(vals[c.datasetIndex][c.dataIndex])} of ${usd(dens[c.datasetIndex][c.dataIndex])})`,
+            footer: items => items.length && !dsl ? `All tracked providers: ${fmt(100 * tot[items[0].dataIndex], 4)}% of panel spend at tagged merchants` : "",
+          });
+          if (!panelSpend.size) msgs.push("No panel spend total in this file: rebuild it with refresh_local.py.");
+          if (dsl) msgs.push("Against days since launch, % of Panel is shown as lines, not stacked: each provider's day 0 is a different date.");
         } else {
           const dig = monthly ? 2 : 3, pp = vals.map(s => s.map(v => v == null || !panel ? null : v / panel));
           const tot = labels.map((_, j) => sum(pp.map(s => s[j])));
