@@ -1,0 +1,164 @@
+<title>gta_6_penetration_analyses</title>
+<style>
+/* Layout: single centred column; header, then the chart panel (legend toggles above the plot), then notes. */
+:root{
+  --bg:#f6f7f9;--panel:#ffffff;--fg:#14161a;--fg2:#4d525b;--muted:#6f757f;--grid:#e3e6ea;--rule:#c9ced6;
+  --s-any:#2a78d6;--s-ps5:#eb6834;--s-xsx:#1baf7a;--release:#14161a;
+  --f-display:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;--f-body:"IBM Plex Sans",system-ui,sans-serif;--f-mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#121417;--panel:#1a1c20;--fg:#f2f3f5;--fg2:#c0c4cb;--muted:#8d939c;--grid:#2a2e34;--rule:#3a3f47;
+  --s-any:#3987e5;--s-ps5:#d95926;--s-xsx:#199e70;--release:#f2f3f5;color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#121417;--panel:#1a1c20;--fg:#f2f3f5;--fg2:#c0c4cb;--muted:#8d939c;--grid:#2a2e34;--rule:#3a3f47;
+  --s-any:#3987e5;--s-ps5:#d95926;--s-xsx:#199e70;--release:#f2f3f5;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:14px;line-height:1.5}
+.wrap{max-width:1040px;margin:0 auto;padding-inline:16px;padding-block:28px 40px;display:grid;gap:18px}
+h1{font-family:var(--f-display);font-weight:600;font-size:1.9rem;margin:0;letter-spacing:.01em;text-wrap:balance}
+h2{font-family:var(--f-display);font-weight:600;font-size:1.25rem;margin:0;text-wrap:balance}
+.eyebrow{font-family:var(--f-mono);font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+p{margin:0;max-width:78ch;color:var(--fg2)}
+.panel{background:var(--panel);border:1px solid var(--grid);border-radius:6px;padding:18px 16px 12px;display:grid;gap:12px;min-width:0}
+.legend{display:flex;flex-wrap:wrap;gap:8px}
+.legend button{font:inherit;font-size:.82rem;display:inline-flex;align-items:center;gap:8px;padding:5px 10px;border:1px solid var(--rule);border-radius:999px;background:transparent;color:var(--fg);cursor:pointer}
+.legend button[aria-pressed="false"]{opacity:.45;text-decoration:line-through}
+.legend button:focus-visible{outline:2px solid var(--s-any);outline-offset:2px}
+.legend svg{flex:none}
+.legend .n{font-family:var(--f-mono);font-size:.74rem;color:var(--muted)}
+.chartbox{position:relative;min-width:0}
+svg.chart{width:100%;height:auto;display:block;overflow:visible}
+.axis text{fill:var(--muted);font-family:var(--f-mono);font-size:11px}
+.gridl{stroke:var(--grid);stroke-width:1}
+.base{stroke:var(--rule);stroke-width:1}
+.rel{stroke:var(--release);stroke-width:1.25;stroke-dasharray:3 3}
+.rel-l{fill:var(--fg);font-family:var(--f-mono);font-size:11px}
+.endl{font-family:var(--f-mono);font-size:11px;fill:var(--fg2)}
+.cross{stroke:var(--muted);stroke-width:1}
+.tip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--rule);border-radius:4px;padding:8px 10px;font-size:.8rem;box-shadow:0 4px 14px rgba(0,0,0,.12);width:min(340px,100%)}
+.tip .d{font-family:var(--f-mono);font-size:.74rem;color:var(--muted);margin-bottom:4px}
+.tip .r{display:grid;grid-template-columns:22px 1fr auto;gap:6px;align-items:center;font-variant-numeric:tabular-nums}
+.tip .v{font-family:var(--f-mono);white-space:nowrap}
+.notes{font-size:.82rem;color:var(--fg2)}
+.notes ul{margin:0;padding-left:18px;display:grid;gap:4px}
+.notes li{max-width:90ch}
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@600&family=IBM+Plex+Sans:wght@400;500&display=swap">
+<div class="wrap">
+  <header style="display:grid;gap:6px">
+    <div class="eyebrow">NIQ Slice e-receipts · 6_12_12 active panel · explicit console owners · GTA VI data to __LAST__</div>
+    <h1>GTA VI pre-order penetration of console owners</h1>
+  </header>
+  <section class="panel" aria-labelledby="s1">
+    <h2 id="s1">1. Cumulative % of console owners who have pre-ordered or bought: GTA VI vs Battlefield 6</h2>
+    <p>Aligned on days to launch: day 0 is 19 Nov 2026 for GTA VI (solid lines) and 10 Oct 2025 for Battlefield 6 (dashed lines). Each line starts on the day its pre-orders opened: day -147 (25 Jun 2026) for GTA VI and day -71 (31 Jul 2025) for Battlefield 6. For each game the base is active-panel mailboxes that joined before its pre-order open and bought a PS5 or Xbox Series X|S console before then. Click a legend item to hide or show its line.</p>
+    <div class="legend" id="legend"></div>
+    <div class="chartbox" id="box">
+      <svg class="chart" id="chart" viewBox="0 0 960 420" role="img" aria-label="Cumulative GTA VI pre-order penetration by day since pre-orders opened"></svg>
+      <div class="tip" id="tip" hidden></div>
+    </div>
+  </section>
+  <div class="notes">
+    <ul>
+      <li>Purchases: first console base-game order per mailbox at any store (PlayStation Store, Microsoft Store and retailers). Gross: cancellations are not netted. Battlefield 6 excludes PC (Steam, EA app, Epic), the open beta, add-ons and in-game currency.</li>
+      <li>"PS5 owners: PS5 version" counts PS5 owners buying the PS5 edition (PlayStation Store or a retail PS5 SKU), and likewise for Xbox. Mailboxes that own both consoles appear in both bases.</li>
+      <li>Left of the launch line both games are pre-orders; Battlefield 6's line continues past launch with post-launch sales. GTA VI pre-orders opened 76 days earlier in the cycle than Battlefield 6's.</li>
+      <li>About 29% of explicit owners never show a PlayStation Store or Microsoft Store receipt, so their digital purchases are invisible and both curves understate true penetration. Walmart pre-orders are not parsed. Counts are unweighted.</li>
+    </ul>
+  </div>
+</div>
+<script>
+const DATA = __DATA__;
+const G = DATA.games;
+const LINES = [
+  {k:"GTA6.ANY", g:"GTA6", s:"ANY", lbl:"GTA VI: any version", c:"--s-any", dash:""},
+  {k:"GTA6.PS5", g:"GTA6", s:"PS5", lbl:"GTA VI: PS5 owners, PS5 version", c:"--s-ps5", dash:""},
+  {k:"GTA6.XSX", g:"GTA6", s:"XSX", lbl:"GTA VI: Xbox owners, Xbox version", c:"--s-xsx", dash:""},
+  {k:"BF6.ANY", g:"BF6", s:"ANY", lbl:"Battlefield 6: any version", c:"--s-any", dash:"7 5"},
+  {k:"BF6.PS5", g:"BF6", s:"PS5", lbl:"Battlefield 6: PS5 owners, PS5 version", c:"--s-ps5", dash:"7 5"},
+  {k:"BF6.XSX", g:"BF6", s:"XSX", lbl:"Battlefield 6: Xbox owners, Xbox version", c:"--s-xsx", dash:"7 5"},
+];
+const ser = l => G[l.g].series[l.s];
+const on = Object.fromEntries(LINES.map(l => [l.k, true]));
+const W = 960, H = 420, M = {l: 52, r: 70, t: 16, b: 44};
+// x = days relative to launch; series index i (days since open) plots at i - launch_day
+const rel = (g, i) => i - G[g].launch_day;
+const X0 = Math.min(...Object.keys(G).map(g => -G[g].launch_day)) - 3;
+const X1 = Math.max(...Object.keys(G).map(g => G[g].last_day - G[g].launch_day)) + 3;
+const fmtD = (g, t) => new Date(new Date(G[g].open + "T00:00:00Z").getTime() + (t + G[g].launch_day) * 864e5).toLocaleDateString("en-GB", {day: "numeric", month: "short", year: "numeric", timeZone: "UTC"});
+const NS = "http://www.w3.org/2000/svg";
+const el = (t, a, p) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); if (p) p.appendChild(e); return e; };
+const svg = document.getElementById("chart"), tip = document.getElementById("tip"), box = document.getElementById("box");
+const x = t => M.l + ((t - X0) / (X1 - X0)) * (W - M.l - M.r);
+
+function niceMax(v) { const p = Math.pow(10, Math.floor(Math.log10(v))); for (const m of [1, 2, 2.5, 5, 10]) if (m * p >= v) return m * p; return 10 * p; }
+
+function draw() {
+  svg.innerHTML = "";
+  const vis = LINES.filter(l => on[l.k]);
+  const mx = Math.max(0.5, ...vis.map(l => Math.max(...ser(l).cum_pct)));
+  const ymax = niceMax(mx * 1.08);
+  const y = v => H - M.b - (v / ymax) * (H - M.t - M.b);
+  const ax = el("g", {class: "axis"}, svg);
+  for (let i = 0; i <= 5; i++) {
+    const v = ymax * i / 5;
+    el("line", {x1: M.l, x2: W - M.r, y1: y(v), y2: y(v), class: i ? "gridl" : "base"}, ax);
+    el("text", {x: M.l - 8, y: y(v) + 4, "text-anchor": "end"}, ax).textContent = (+v.toFixed(2)) + "%";
+  }
+  for (let t = Math.ceil(X0 / 30) * 30; t <= X1; t += 30) {
+    el("line", {x1: x(t), x2: x(t), y1: H - M.b, y2: H - M.b + 5, class: "base"}, ax);
+    el("text", {x: x(t), y: H - M.b + 18, "text-anchor": "middle"}, ax).textContent = t > 0 ? "+" + t : t;
+  }
+  el("text", {x: (M.l + W - M.r) / 2, y: H - M.b + 36, "text-anchor": "middle"}, ax).textContent = "days to launch";
+  // shared launch drop-line
+  el("line", {x1: x(0), x2: x(0), y1: M.t, y2: H - M.b, class: "rel"}, svg);
+  el("text", {x: x(0) - 6, y: M.t + 12, "text-anchor": "end", class: "rel-l"}, svg).textContent = "Launch: GTA VI 19 Nov 2026";
+  el("text", {x: x(0) - 6, y: M.t + 26, "text-anchor": "end", class: "rel-l"}, svg).textContent = "Battlefield 6 10 Oct 2025";
+  // lines + endpoint dots
+  const ends = [];
+  vis.forEach(l => {
+    const s = ser(l).cum_pct;
+    const d = s.map((v, i) => (i ? "L" : "M") + x(rel(l.g, i)).toFixed(1) + "," + y(v).toFixed(1)).join("");
+    el("path", {d, fill: "none", stroke: `var(${l.c})`, "stroke-width": 2, "stroke-dasharray": l.dash, "stroke-linejoin": "round"}, svg);
+    const last = s[s.length - 1], lx = x(rel(l.g, s.length - 1));
+    ends.push({v: last, y: y(last), x: lx});
+    el("circle", {cx: lx, cy: y(last), r: 3.5, fill: `var(${l.c})`, stroke: "var(--panel)", "stroke-width": 2}, svg);
+  });
+  // de-collide end labels that share an x position
+  ends.sort((a, b) => a.x - b.x || a.y - b.y);
+  for (let i = 1; i < ends.length; i++) if (Math.abs(ends[i].x - ends[i - 1].x) < 40 && ends[i].y - ends[i - 1].y < 13) ends[i].y = ends[i - 1].y + 13;
+  ends.forEach(e => { el("text", {x: e.x + 8, y: e.y + 4, class: "endl"}, svg).textContent = e.v.toFixed(2) + "%"; });
+  // hover layer: crosshair + tooltip
+  const cross = el("line", {y1: M.t, y2: H - M.b, class: "cross", visibility: "hidden"}, svg);
+  const inRange = (g, t) => t >= -G[g].launch_day && t <= G[g].last_day - G[g].launch_day;
+  const hit = el("rect", {x: x(X0 + 3), y: M.t, width: x(X1 - 3) - x(X0 + 3), height: H - M.t - M.b, fill: "transparent"}, svg);
+  const move = ev => {
+    const r = svg.getBoundingClientRect();
+    const px = (ev.clientX - r.left) * (W / r.width);
+    const t = Math.max(X0 + 3, Math.min(X1 - 3, Math.round(X0 + (px - M.l) / (W - M.l - M.r) * (X1 - X0))));
+    cross.setAttribute("x1", x(t)); cross.setAttribute("x2", x(t)); cross.setAttribute("visibility", "visible");
+    const dates = ["GTA6", "BF6"].filter(g => inRange(g, t)).map(g => (g === "GTA6" ? "GTA VI " : "BF6 ") + fmtD(g, t)).join(" · ");
+    const rows = vis.filter(l => inRange(l.g, t));
+    tip.innerHTML = `<div class="d">${t > 0 ? "+" + t : t} days to launch · ${dates || "no data"}</div>` + rows.map(l => {
+      const s = ser(l), v = s.cum_pct[t + G[l.g].launch_day], n = Math.round(v * s.base / 100);
+      return `<div class="r"><svg width="22" height="8"><line x1="0" y1="4" x2="22" y2="4" stroke="var(${l.c})" stroke-width="2" stroke-dasharray="${l.dash}"/></svg><span>${l.lbl}</span><span class="v">${v.toFixed(2)}% · ${n.toLocaleString()}</span></div>`;
+    }).join("");
+    tip.hidden = false;
+    const bw = box.clientWidth, tx = (x(t) / W) * bw, tw = tip.offsetWidth;
+    tip.style.left = Math.max(0, tx + 12 + tw > bw ? tx - tw - 12 : tx + 12) + "px";
+    tip.style.top = "8px";
+  };
+  hit.addEventListener("pointermove", move);
+  hit.addEventListener("pointerdown", move);
+  hit.addEventListener("pointerleave", () => { tip.hidden = true; cross.setAttribute("visibility", "hidden"); });
+}
+
+const lg = document.getElementById("legend");
+LINES.forEach(l => {
+  const s = ser(l), b = document.createElement("button");
+  b.type = "button"; b.id = "lg-" + l.k; b.setAttribute("aria-pressed", "true");
+  b.innerHTML = `<svg width="24" height="8"><line x1="0" y1="4" x2="24" y2="4" stroke="var(${l.c})" stroke-width="2.5" stroke-dasharray="${l.dash}"/></svg>${l.lbl} <span class="n">n=${s.base.toLocaleString()}</span>`;
+  b.onclick = () => { on[l.k] = !on[l.k]; b.setAttribute("aria-pressed", on[l.k]); draw(); };
+  lg.appendChild(b);
+});
+draw();
+</script>

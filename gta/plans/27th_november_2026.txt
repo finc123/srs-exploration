@@ -1,0 +1,46 @@
+Spawn 4 sub-agents to do as follows:
+
+1. 2 sub-agents (one for each of MScience and Yipit) to review MScience and Yipit reports for methodology explaining how they track GTA VI pre-purchase activity. It looks like they both rely on e-receipt data, but we should check to confirm, and also try and gain an understanding of their blind spots.
+2. 1 sub-agent to search SRS_SLICE.COMMON.ITEMS_V for mentions of GTA VI (Grand Theft Auto) pre-purchases. We should note the merchants and filters that offer this visibility. 
+3. 1 sub-agent to search EARNEST.COMMON.TXNS_CORE_V to see if we can observe GTA VI pre-purchases in the card data, for the 2022 Consistent Shopper panel. Perhaps the billing description notes GTA VI, but if not, we can look by retailer (PlayStation, Microsoft, Rockstar, Amazon etc.) and look at the expected prices we should see. GTA VI was available for pre-launch from June 25th onwards, so only the retailer channels where we see a sudden inflection in the number of transactions within the expected pricing buckets should be considered reliable.
+
+DONE.
+
+##Follow-Ups:
+
+Spin-up 3 sub-agents to do as follows:
+
+1. For AMZN and Walmart, check the SUPRA feeds to see if we can view subjects confirming the purchase of GTA VI. Report the results back to me.
+2. Confirm whether we see Rockstar Store transactions being parsed out. We should also check for Rockstar emails in SUPRA.
+3. Investigate whether we can create a list of mailboxes that we believe have purchased PS5 or Xbox Series X|S. We can do this by observing purchase emails, or inferring based on game purchase emails, or SUPRA emails that mention the console. I want to see a count of mailboxes that we believe have one of these consoles based on explicit purchases, a count based on explicit + inferred (e.g., because we see them making purchases that mention PS5, Xbox X|S), a count of mailboxes that we think own a PlayStation or Xbox (model agnostic). For each I want to see the % of mailboxes that count represents, and then I want to do this again for mailboxes that joined before June 2020.
+
+##Decisions based on Follow-Ups:
+
+1. We should be using the "Explicit + Inferred" approach to determine which set of users should be our install base for GTA VI. 
+2. We should try various panels of mailboxes -- for example, active panel, active and joined before June 2020 etc. to see how sensitive our GTA VI pre-purchase penetration is to the mailbox join date requirement.
+
+## Initial Game Penetration Analyses
+
+1. Define the set of members to conduct this analyses on -- we should be running this analyses separately on the panel of members that we observe as having made explicit console purchases, and again for those making explicit + inferred purchases. For GTA VI, we should require that the mailboxes joined the panel before June 25th 2026 (the date that pre-order launched), and we should further require that the install base is determined based on mailboxes that made the explicit (or explicit + inferred) purchase before this date as well.
+2. Create a Claude Artifact, called gta_6_penetration_analyses. The first section should show the cumulative % of members (those who joined the panel before June 25th 2026, who purchased their console before this date as well) purchasing GTA VI (so we can see % of console owners who purchased GTA VI by day 0, day 1 etc.), with a drop-line for November 19th (when GTA VI is supposed to be released).
+
+DONE (27 Oct 2026): https://claude.ai/artifact/6ndZKvPYuwXA2RWJnp6hz4
+
+## Amendments (27 Oct 2026)
+
+1. Only include the Explicit panel (members with an explicit PS5 / Xbox Series X|S console purchase). Drop the Explicit + Inferred lines from the artifact.
+2. Add Battlefield 6 (BF6) as a comparable. BF6 pre-orders opened July 31st 2025 and it launched October 10th 2025.
+   - Same methodology as GTA VI: members of the active panel who joined before July 31st 2025, with their explicit console purchase dated before July 31st 2025.
+   - Console purchases of BF6 only (PlayStation Store, Microsoft Store, retail PS5/Xbox SKUs); exclude PC (Steam, EA app, Epic), the open beta, add-ons and currency.
+3. Add BF6 to the chart, aligned on days to launch: the launch date sits at the same x-coordinate (day 0) for both games, with one shared launch drop-line (GTA VI Nov 19th 2026, BF6 Oct 10th 2025). Each game's line starts at its own pre-order open: GTA VI at day -147 (June 25th 2026) and BF6 at day -71 (July 31st 2025), so no BF6 trend is shown before -71. The first point of each line shows cumulative orders as of that game's pre-order open day.
+   (Corrected 27 Oct 2026: an earlier version aligned on days since pre-order open, which compared BF6 post-launch sales against GTA VI pre-orders.)
+## Investigations (opened 27 Oct 2026)
+
+1. GTA VI vs BF6 ratio. On explicit console owners aligned on days to launch, we see GTA VI at ~8.5x BF6 (3.92% vs 0.46% at -24 days), far above MScience (3.2x Modern Warfare II, US+EU) and Yipit (3.7x BF6). Find what drives the gap. Main concern: time. Most receipts we see come from the digital stores (PlayStation Store, Microsoft Store), so part of the delta could be the growing share of digital vs physical purchases between 2025 and 2026. Also test: unit counts vs penetration, PC inclusion, channel-by-channel ratios, panel/parse drift in store receipts, and our own GTA VI vs MWII multiple on MScience's basis.
+   Status: OPEN.
+
+2. Roblox overlap. MScience: ~13% of GTA VI pre-purchasers made a Roblox console transaction, ~22% across all channels. Yipit: 1.65% of Roblox payers have pre-ordered GTA VI (through 11 Oct). Compute ours: mailboxes in the e-receipt panel with a Roblox transaction in the past 6 months, and the % that pre-purchased GTA VI (and the reverse direction to match MScience). Do we differ significantly?
+   Status: OPEN.
+
+3. High-spender cohorts. Can we identify high gaming spenders in the e-receipt data (e.g. $ spend in the past 12 months at PlayStation Store / Microsoft Store), and does GTA VI penetration vary by spend cohort? Find which statistics best establish high spenders and suggest thresholds.
+   Status: OPEN.

@@ -1,0 +1,164 @@
+<title>gta_6_penetration_analyses</title>
+<style>
+/* Layout: single centred column; header, then the chart panel (legend toggles above the plot), then notes. */
+:root{
+  --bg:#f6f7f9;--panel:#ffffff;--fg:#14161a;--fg2:#4d525b;--muted:#6f757f;--grid:#e3e6ea;--rule:#c9ced6;
+  --s-any:#2a78d6;--s-ps5:#eb6834;--s-xsx:#1baf7a;--release:#14161a;
+  --f-display:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;--f-body:"IBM Plex Sans",system-ui,sans-serif;--f-mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#121417;--panel:#1a1c20;--fg:#f2f3f5;--fg2:#c0c4cb;--muted:#8d939c;--grid:#2a2e34;--rule:#3a3f47;
+  --s-any:#3987e5;--s-ps5:#d95926;--s-xsx:#199e70;--release:#f2f3f5;color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#121417;--panel:#1a1c20;--fg:#f2f3f5;--fg2:#c0c4cb;--muted:#8d939c;--grid:#2a2e34;--rule:#3a3f47;
+  --s-any:#3987e5;--s-ps5:#d95926;--s-xsx:#199e70;--release:#f2f3f5;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:14px;line-height:1.5}
+.wrap{max-width:1040px;margin:0 auto;padding-inline:16px;padding-block:28px 40px;display:grid;gap:18px}
+h1{font-family:var(--f-display);font-weight:600;font-size:1.9rem;margin:0;letter-spacing:.01em;text-wrap:balance}
+h2{font-family:var(--f-display);font-weight:600;font-size:1.25rem;margin:0;text-wrap:balance}
+.eyebrow{font-family:var(--f-mono);font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+p{margin:0;max-width:78ch;color:var(--fg2)}
+.panel{background:var(--panel);border:1px solid var(--grid);border-radius:6px;padding:18px 16px 12px;display:grid;gap:12px;min-width:0}
+.legend{display:flex;flex-wrap:wrap;gap:8px}
+.legend button{font:inherit;font-size:.82rem;display:inline-flex;align-items:center;gap:8px;padding:5px 10px;border:1px solid var(--rule);border-radius:999px;background:transparent;color:var(--fg);cursor:pointer}
+.legend button[aria-pressed="false"]{opacity:.45;text-decoration:line-through}
+.legend button:focus-visible{outline:2px solid var(--s-any);outline-offset:2px}
+.legend svg{flex:none}
+.legend .n{font-family:var(--f-mono);font-size:.74rem;color:var(--muted)}
+.chartbox{position:relative;min-width:0}
+svg.chart{width:100%;height:auto;display:block;overflow:visible}
+.axis text{fill:var(--muted);font-family:var(--f-mono);font-size:11px}
+.gridl{stroke:var(--grid);stroke-width:1}
+.base{stroke:var(--rule);stroke-width:1}
+.rel{stroke:var(--release);stroke-width:1.25;stroke-dasharray:3 3}
+.rel-l{fill:var(--fg);font-family:var(--f-mono);font-size:11px}
+.endl{font-family:var(--f-mono);font-size:11px;fill:var(--fg2)}
+.cross{stroke:var(--muted);stroke-width:1}
+.tip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--rule);border-radius:4px;padding:8px 10px;font-size:.8rem;box-shadow:0 4px 14px rgba(0,0,0,.12);width:min(340px,100%)}
+.tip .d{font-family:var(--f-mono);font-size:.74rem;color:var(--muted);margin-bottom:4px}
+.tip .r{display:grid;grid-template-columns:22px 1fr auto;gap:6px;align-items:center;font-variant-numeric:tabular-nums}
+.tip .v{font-family:var(--f-mono);white-space:nowrap}
+.notes{font-size:.82rem;color:var(--fg2)}
+.notes ul{margin:0;padding-left:18px;display:grid;gap:4px}
+.notes li{max-width:90ch}
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@600&family=IBM+Plex+Sans:wght@400;500&display=swap">
+<div class="wrap">
+  <header style="display:grid;gap:6px">
+    <div class="eyebrow">NIQ Slice e-receipts · 6_12_12 active panel · explicit console owners · GTA VI data to 2026-10-26</div>
+    <h1>GTA VI pre-order penetration of console owners</h1>
+  </header>
+  <section class="panel" aria-labelledby="s1">
+    <h2 id="s1">1. Cumulative % of console owners who have pre-ordered or bought: GTA VI vs Battlefield 6</h2>
+    <p>Aligned on days to launch: day 0 is 19 Nov 2026 for GTA VI (solid lines) and 10 Oct 2025 for Battlefield 6 (dashed lines). Each line starts on the day its pre-orders opened: day -147 (25 Jun 2026) for GTA VI and day -71 (31 Jul 2025) for Battlefield 6. For each game the base is active-panel mailboxes that joined before its pre-order open and bought a PS5 or Xbox Series X|S console before then. Click a legend item to hide or show its line.</p>
+    <div class="legend" id="legend"></div>
+    <div class="chartbox" id="box">
+      <svg class="chart" id="chart" viewBox="0 0 960 420" role="img" aria-label="Cumulative GTA VI pre-order penetration by day since pre-orders opened"></svg>
+      <div class="tip" id="tip" hidden></div>
+    </div>
+  </section>
+  <div class="notes">
+    <ul>
+      <li>Purchases: first console base-game order per mailbox at any store (PlayStation Store, Microsoft Store and retailers). Gross: cancellations are not netted. Battlefield 6 excludes PC (Steam, EA app, Epic), the open beta, add-ons and in-game currency.</li>
+      <li>"PS5 owners: PS5 version" counts PS5 owners buying the PS5 edition (PlayStation Store or a retail PS5 SKU), and likewise for Xbox. Mailboxes that own both consoles appear in both bases.</li>
+      <li>Left of the launch line both games are pre-orders; Battlefield 6's line continues past launch with post-launch sales. GTA VI pre-orders opened 76 days earlier in the cycle than Battlefield 6's.</li>
+      <li>About 29% of explicit owners never show a PlayStation Store or Microsoft Store receipt, so their digital purchases are invisible and both curves understate true penetration. Walmart pre-orders are not parsed. Counts are unweighted.</li>
+    </ul>
+  </div>
+</div>
+<script>
+const DATA = {"games": {"GTA6": {"open": "2026-06-25", "launch_day": 147, "last_day": 123, "last_date": "2026-10-26", "series": {"PS5": {"base": 55570, "buyers": 2387, "cum_pct": [1.5314, 1.7869, 1.9345, 2.0065, 2.0587, 2.1001, 2.136, 2.19, 2.2206, 2.2422, 2.2692, 2.2836, 2.2962, 2.3178, 2.334, 2.3502, 2.3664, 2.3826, 2.3934, 2.4006, 2.4078, 2.4096, 2.424, 2.4438, 2.4474, 2.4546, 2.4618, 2.4762, 2.4834, 2.4924, 2.4996, 2.5085, 2.5139, 2.5175, 2.5211, 2.5301, 2.5373, 2.5463, 2.5517, 2.5553, 2.5571, 2.5625, 2.5697, 2.5751, 2.5895, 2.5949, 2.6003, 2.6111, 2.6183, 2.6273, 2.6345, 2.6471, 2.6579, 2.6651, 2.6723, 2.6795, 2.6885, 2.7011, 2.7101, 2.7119, 2.7227, 2.7245, 2.7317, 2.7911, 2.8433, 2.9008, 2.9278, 2.9656, 2.9944, 3.0142, 3.0412, 3.0628, 3.0988, 3.1204, 3.1402, 3.1564, 3.1672, 3.196, 3.214, 3.223, 3.2428, 3.2482, 3.2554, 3.2662, 3.2805, 3.3003, 3.3075, 3.3129, 3.3291, 3.3399, 3.3507, 3.3669, 3.3777, 3.3903, 3.4029, 3.4137, 3.4227, 3.4389, 3.4497, 3.4731, 3.4875, 3.5073, 3.5397, 3.5631, 3.5973, 3.6243, 3.662, 3.6836, 3.7232, 3.7502, 3.7646, 3.788, 3.8438, 3.8852, 3.9284, 3.9554, 3.9806, 4.0148, 4.0687, 4.1119, 4.1587, 4.2091, 4.2613, 4.2955]}, "XSX": {"base": 33458, "buyers": 593, "cum_pct": [0.4722, 0.6037, 0.6516, 0.6755, 0.7084, 0.7353, 0.7592, 0.7741, 0.789, 0.801, 0.813, 0.8309, 0.8428, 0.8548, 0.8608, 0.8697, 0.8727, 0.8817, 0.8817, 0.8847, 0.8877, 0.8877, 0.8877, 0.8966, 0.8996, 0.8996, 0.8996, 0.8996, 0.9026, 0.9056, 0.9116, 0.9116, 0.9116, 0.9176, 0.9206, 0.9265, 0.9355, 0.9355, 0.9385, 0.9415, 0.9415, 0.9415, 0.9445, 0.9534, 0.9624, 0.9744, 0.9773, 0.9863, 0.9983, 1.0042, 1.0072, 1.0072, 1.0162, 1.0162, 1.0222, 1.0311, 1.0311, 1.0401, 1.058, 1.07, 1.082, 1.0879, 1.0939, 1.1178, 1.1358, 1.1507, 1.1716, 1.1896, 1.2135, 1.2254, 1.2404, 1.2523, 1.2702, 1.2762, 1.2852, 1.2882, 1.3001, 1.3061, 1.3151, 1.324, 1.327, 1.336, 1.342, 1.3509, 1.3599, 1.3629, 1.3629, 1.3659, 1.3719, 1.3749, 1.3778, 1.3808, 1.3898, 1.3928, 1.3928, 1.3988, 1.4137, 1.4257, 1.4346, 1.4436, 1.4436, 1.4436, 1.4466, 1.4496, 1.4556, 1.4645, 1.4735, 1.4884, 1.4974, 1.5064, 1.5183, 1.5243, 1.5482, 1.5602, 1.5691, 1.5871, 1.605, 1.6259, 1.6439, 1.6737, 1.6977, 1.7246, 1.7425, 1.7724]}, "ANY": {"base": 82830, "buyers": 3247, "cum_pct": [1.3111, 1.5574, 1.6781, 1.747, 1.7977, 1.8363, 1.8749, 1.922, 1.9534, 1.9727, 2.0005, 2.0198, 2.0355, 2.056, 2.0693, 2.0862, 2.0995, 2.1152, 2.1224, 2.1285, 2.1369, 2.1381, 2.149, 2.1659, 2.1707, 2.1755, 2.1804, 2.19, 2.1973, 2.2045, 2.213, 2.2202, 2.2238, 2.2299, 2.2335, 2.2431, 2.2516, 2.2588, 2.2637, 2.2673, 2.2685, 2.2721, 2.2782, 2.2854, 2.2987, 2.3071, 2.3132, 2.3252, 2.3361, 2.3446, 2.353, 2.3627, 2.376, 2.3808, 2.388, 2.3965, 2.4025, 2.4158, 2.4315, 2.4375, 2.4508, 2.4556, 2.4629, 2.5196, 2.5655, 2.609, 2.6367, 2.6729, 2.7031, 2.7237, 2.749, 2.7756, 2.8106, 2.8287, 2.8468, 2.8601, 2.8746, 2.9011, 2.9168, 2.9265, 2.9434, 2.953, 2.9603, 2.9711, 2.9868, 3.0062, 3.0134, 3.0194, 3.0363, 3.046, 3.0544, 3.0665, 3.0798, 3.0907, 3.1003, 3.11, 3.1233, 3.1402, 3.1547, 3.1764, 3.1885, 3.2042, 3.2295, 3.2476, 3.2742, 3.3019, 3.3309, 3.3539, 3.3865, 3.4082, 3.4251, 3.4456, 3.4951, 3.5289, 3.5639, 3.5929, 3.6195, 3.6557, 3.7004, 3.7438, 3.7861, 3.838, 3.8839, 3.9201]}}}, "BF6": {"open": "2025-07-31", "launch_day": 71, "last_day": 122, "last_date": "2025-11-30", "series": {"PS5": {"base": 48898, "buyers": 1861, "cum_pct": [0.047, 0.0573, 0.0777, 0.0982, 0.1227, 0.1329, 0.1534, 0.1963, 0.2495, 0.2618, 0.2761, 0.2863, 0.2924, 0.3006, 0.3088, 0.319, 0.3231, 0.3354, 0.3374, 0.3395, 0.3456, 0.3477, 0.3497, 0.3497, 0.3518, 0.3558, 0.3579, 0.364, 0.3681, 0.3702, 0.3702, 0.3722, 0.3783, 0.3783, 0.3804, 0.3845, 0.3865, 0.3906, 0.3947, 0.3947, 0.3988, 0.3988, 0.4008, 0.4029, 0.4049, 0.4049, 0.409, 0.409, 0.4111, 0.4192, 0.4274, 0.4315, 0.4356, 0.4376, 0.4417, 0.4438, 0.4581, 0.4704, 0.4785, 0.4888, 0.5072, 0.5215, 0.5419, 0.5604, 0.5951, 0.6237, 0.6544, 0.6912, 0.7751, 0.861, 1.1391, 1.6933, 1.9162, 2.1187, 2.2537, 2.3477, 2.452, 2.5318, 2.6484, 2.7281, 2.7833, 2.8345, 2.8774, 2.9204, 2.9531, 3.0103, 3.039, 3.0676, 3.1003, 3.1392, 3.1699, 3.2087, 3.2496, 3.2783, 3.3151, 3.3232, 3.3437, 3.3621, 3.3785, 3.3948, 3.4173, 3.4275, 3.4419, 3.4603, 3.4644, 3.4746, 3.4909, 3.5093, 3.5257, 3.5339, 3.5462, 3.5584, 3.5748, 3.6116, 3.6423, 3.6607, 3.6811, 3.6914, 3.72, 3.7486, 3.7691, 3.7895, 3.8059]}, "XSX": {"base": 31131, "buyers": 992, "cum_pct": [0.0418, 0.0642, 0.0739, 0.0996, 0.1092, 0.1285, 0.1349, 0.1702, 0.212, 0.2313, 0.2602, 0.273, 0.2795, 0.2827, 0.2955, 0.3019, 0.3052, 0.318, 0.3244, 0.3309, 0.3309, 0.3341, 0.3373, 0.3373, 0.3373, 0.3373, 0.3373, 0.3405, 0.3405, 0.3437, 0.3501, 0.3533, 0.3533, 0.3533, 0.3533, 0.3533, 0.3533, 0.3533, 0.3533, 0.3566, 0.3566, 0.3566, 0.3566, 0.3566, 0.3566, 0.3566, 0.363, 0.363, 0.363, 0.363, 0.363, 0.3662, 0.3726, 0.3726, 0.3823, 0.3823, 0.3919, 0.3951, 0.4047, 0.4144, 0.4208, 0.4337, 0.4369, 0.4593, 0.4818, 0.53, 0.5525, 0.5878, 0.62, 0.6778, 0.8191, 1.3556, 1.68, 1.8695, 2.0141, 2.1169, 2.194, 2.271, 2.3578, 2.4284, 2.4766, 2.5152, 2.5441, 2.5601, 2.6051, 2.6405, 2.6726, 2.7015, 2.724, 2.7368, 2.7561, 2.7786, 2.8171, 2.8396, 2.8653, 2.8685, 2.8782, 2.8942, 2.9039, 2.9231, 2.9488, 2.9681, 2.9777, 2.9874, 2.9938, 3.0002, 3.0131, 3.0291, 3.0516, 3.058, 3.0677, 3.0741, 3.0902, 3.0966, 3.1094, 3.1159, 3.1255, 3.1287, 3.1351, 3.1448, 3.1608, 3.1769, 3.1865]}, "ANY": {"base": 74347, "buyers": 3136, "cum_pct": [0.0511, 0.0713, 0.0888, 0.113, 0.1358, 0.1506, 0.1695, 0.2125, 0.2717, 0.2905, 0.3121, 0.3268, 0.3363, 0.3443, 0.3551, 0.3672, 0.3712, 0.3887, 0.3928, 0.3968, 0.4008, 0.4035, 0.4062, 0.4075, 0.4089, 0.4116, 0.4129, 0.4183, 0.4223, 0.425, 0.4277, 0.4304, 0.4344, 0.4344, 0.4358, 0.4371, 0.4385, 0.4412, 0.4439, 0.4452, 0.4479, 0.4479, 0.4506, 0.4519, 0.4533, 0.4533, 0.46, 0.46, 0.4614, 0.4667, 0.4735, 0.4788, 0.4856, 0.4869, 0.4936, 0.495, 0.5084, 0.5178, 0.5273, 0.538, 0.5542, 0.5716, 0.5918, 0.6174, 0.651, 0.6927, 0.725, 0.7694, 0.846, 0.9294, 1.1944, 1.8494, 2.1628, 2.3888, 2.5569, 2.6672, 2.7762, 2.8676, 2.9927, 3.0788, 3.142, 3.1999, 3.2416, 3.2765, 3.3196, 3.3774, 3.4124, 3.446, 3.4769, 3.5133, 3.5415, 3.5819, 3.6249, 3.6572, 3.6935, 3.7029, 3.7217, 3.7433, 3.7621, 3.7836, 3.8132, 3.832, 3.8468, 3.8643, 3.8697, 3.8791, 3.8979, 3.9181, 3.9396, 3.9504, 3.9638, 3.976, 3.9948, 4.0271, 4.054, 4.0741, 4.0943, 4.1051, 4.1279, 4.1522, 4.1777, 4.1992, 4.2181]}}}}};
+const G = DATA.games;
+const LINES = [
+  {k:"GTA6.ANY", g:"GTA6", s:"ANY", lbl:"GTA VI: any version", c:"--s-any", dash:""},
+  {k:"GTA6.PS5", g:"GTA6", s:"PS5", lbl:"GTA VI: PS5 owners, PS5 version", c:"--s-ps5", dash:""},
+  {k:"GTA6.XSX", g:"GTA6", s:"XSX", lbl:"GTA VI: Xbox owners, Xbox version", c:"--s-xsx", dash:""},
+  {k:"BF6.ANY", g:"BF6", s:"ANY", lbl:"Battlefield 6: any version", c:"--s-any", dash:"7 5"},
+  {k:"BF6.PS5", g:"BF6", s:"PS5", lbl:"Battlefield 6: PS5 owners, PS5 version", c:"--s-ps5", dash:"7 5"},
+  {k:"BF6.XSX", g:"BF6", s:"XSX", lbl:"Battlefield 6: Xbox owners, Xbox version", c:"--s-xsx", dash:"7 5"},
+];
+const ser = l => G[l.g].series[l.s];
+const on = Object.fromEntries(LINES.map(l => [l.k, true]));
+const W = 960, H = 420, M = {l: 52, r: 70, t: 16, b: 44};
+// x = days relative to launch; series index i (days since open) plots at i - launch_day
+const rel = (g, i) => i - G[g].launch_day;
+const X0 = Math.min(...Object.keys(G).map(g => -G[g].launch_day)) - 3;
+const X1 = Math.max(...Object.keys(G).map(g => G[g].last_day - G[g].launch_day)) + 3;
+const fmtD = (g, t) => new Date(new Date(G[g].open + "T00:00:00Z").getTime() + (t + G[g].launch_day) * 864e5).toLocaleDateString("en-GB", {day: "numeric", month: "short", year: "numeric", timeZone: "UTC"});
+const NS = "http://www.w3.org/2000/svg";
+const el = (t, a, p) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); if (p) p.appendChild(e); return e; };
+const svg = document.getElementById("chart"), tip = document.getElementById("tip"), box = document.getElementById("box");
+const x = t => M.l + ((t - X0) / (X1 - X0)) * (W - M.l - M.r);
+
+function niceMax(v) { const p = Math.pow(10, Math.floor(Math.log10(v))); for (const m of [1, 2, 2.5, 5, 10]) if (m * p >= v) return m * p; return 10 * p; }
+
+function draw() {
+  svg.innerHTML = "";
+  const vis = LINES.filter(l => on[l.k]);
+  const mx = Math.max(0.5, ...vis.map(l => Math.max(...ser(l).cum_pct)));
+  const ymax = niceMax(mx * 1.08);
+  const y = v => H - M.b - (v / ymax) * (H - M.t - M.b);
+  const ax = el("g", {class: "axis"}, svg);
+  for (let i = 0; i <= 5; i++) {
+    const v = ymax * i / 5;
+    el("line", {x1: M.l, x2: W - M.r, y1: y(v), y2: y(v), class: i ? "gridl" : "base"}, ax);
+    el("text", {x: M.l - 8, y: y(v) + 4, "text-anchor": "end"}, ax).textContent = (+v.toFixed(2)) + "%";
+  }
+  for (let t = Math.ceil(X0 / 30) * 30; t <= X1; t += 30) {
+    el("line", {x1: x(t), x2: x(t), y1: H - M.b, y2: H - M.b + 5, class: "base"}, ax);
+    el("text", {x: x(t), y: H - M.b + 18, "text-anchor": "middle"}, ax).textContent = t > 0 ? "+" + t : t;
+  }
+  el("text", {x: (M.l + W - M.r) / 2, y: H - M.b + 36, "text-anchor": "middle"}, ax).textContent = "days to launch";
+  // shared launch drop-line
+  el("line", {x1: x(0), x2: x(0), y1: M.t, y2: H - M.b, class: "rel"}, svg);
+  el("text", {x: x(0) - 6, y: M.t + 12, "text-anchor": "end", class: "rel-l"}, svg).textContent = "Launch: GTA VI 19 Nov 2026";
+  el("text", {x: x(0) - 6, y: M.t + 26, "text-anchor": "end", class: "rel-l"}, svg).textContent = "Battlefield 6 10 Oct 2025";
+  // lines + endpoint dots
+  const ends = [];
+  vis.forEach(l => {
+    const s = ser(l).cum_pct;
+    const d = s.map((v, i) => (i ? "L" : "M") + x(rel(l.g, i)).toFixed(1) + "," + y(v).toFixed(1)).join("");
+    el("path", {d, fill: "none", stroke: `var(${l.c})`, "stroke-width": 2, "stroke-dasharray": l.dash, "stroke-linejoin": "round"}, svg);
+    const last = s[s.length - 1], lx = x(rel(l.g, s.length - 1));
+    ends.push({v: last, y: y(last), x: lx});
+    el("circle", {cx: lx, cy: y(last), r: 3.5, fill: `var(${l.c})`, stroke: "var(--panel)", "stroke-width": 2}, svg);
+  });
+  // de-collide end labels that share an x position
+  ends.sort((a, b) => a.x - b.x || a.y - b.y);
+  for (let i = 1; i < ends.length; i++) if (Math.abs(ends[i].x - ends[i - 1].x) < 40 && ends[i].y - ends[i - 1].y < 13) ends[i].y = ends[i - 1].y + 13;
+  ends.forEach(e => { el("text", {x: e.x + 8, y: e.y + 4, class: "endl"}, svg).textContent = e.v.toFixed(2) + "%"; });
+  // hover layer: crosshair + tooltip
+  const cross = el("line", {y1: M.t, y2: H - M.b, class: "cross", visibility: "hidden"}, svg);
+  const inRange = (g, t) => t >= -G[g].launch_day && t <= G[g].last_day - G[g].launch_day;
+  const hit = el("rect", {x: x(X0 + 3), y: M.t, width: x(X1 - 3) - x(X0 + 3), height: H - M.t - M.b, fill: "transparent"}, svg);
+  const move = ev => {
+    const r = svg.getBoundingClientRect();
+    const px = (ev.clientX - r.left) * (W / r.width);
+    const t = Math.max(X0 + 3, Math.min(X1 - 3, Math.round(X0 + (px - M.l) / (W - M.l - M.r) * (X1 - X0))));
+    cross.setAttribute("x1", x(t)); cross.setAttribute("x2", x(t)); cross.setAttribute("visibility", "visible");
+    const dates = ["GTA6", "BF6"].filter(g => inRange(g, t)).map(g => (g === "GTA6" ? "GTA VI " : "BF6 ") + fmtD(g, t)).join(" · ");
+    const rows = vis.filter(l => inRange(l.g, t));
+    tip.innerHTML = `<div class="d">${t > 0 ? "+" + t : t} days to launch · ${dates || "no data"}</div>` + rows.map(l => {
+      const s = ser(l), v = s.cum_pct[t + G[l.g].launch_day], n = Math.round(v * s.base / 100);
+      return `<div class="r"><svg width="22" height="8"><line x1="0" y1="4" x2="22" y2="4" stroke="var(${l.c})" stroke-width="2" stroke-dasharray="${l.dash}"/></svg><span>${l.lbl}</span><span class="v">${v.toFixed(2)}% · ${n.toLocaleString()}</span></div>`;
+    }).join("");
+    tip.hidden = false;
+    const bw = box.clientWidth, tx = (x(t) / W) * bw, tw = tip.offsetWidth;
+    tip.style.left = Math.max(0, tx + 12 + tw > bw ? tx - tw - 12 : tx + 12) + "px";
+    tip.style.top = "8px";
+  };
+  hit.addEventListener("pointermove", move);
+  hit.addEventListener("pointerdown", move);
+  hit.addEventListener("pointerleave", () => { tip.hidden = true; cross.setAttribute("visibility", "hidden"); });
+}
+
+const lg = document.getElementById("legend");
+LINES.forEach(l => {
+  const s = ser(l), b = document.createElement("button");
+  b.type = "button"; b.id = "lg-" + l.k; b.setAttribute("aria-pressed", "true");
+  b.innerHTML = `<svg width="24" height="8"><line x1="0" y1="4" x2="24" y2="4" stroke="var(${l.c})" stroke-width="2.5" stroke-dasharray="${l.dash}"/></svg>${l.lbl} <span class="n">n=${s.base.toLocaleString()}</span>`;
+  b.onclick = () => { on[l.k] = !on[l.k]; b.setAttribute("aria-pressed", on[l.k]); draw(); };
+  lg.appendChild(b);
+});
+draw();
+</script>
