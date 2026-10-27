@@ -130,3 +130,13 @@ US AI Pro monthly: 1.7k (Jan-25) → 8.6k (Jan-26) → 11.3k (May-26). Jul-26 di
 1. What are EU €5.49 and UK £4.79 / £23.99?
 2. Should the subscriber index treat existing 2TB holders on 2026-01-27 as opening stock?
 3. Should the earlier EU/UK AI Plus launch be fed back into `plans/gemini_prices.csv`?
+
+## Update 2026-10-26: missing Google One card charges (card_ereceipt_comparison.ipynb)
+- Card Gemini paying accounts dropped from 43.6k (Jun 2026) to 39.9k (Jul, Aug), then 56.6k (Sep), reading as churn plus re-adds.
+  Of accounts paying the same price in Jul and Sep with nothing captured in Aug (6,884), 5,054 paid `GOOGLE *GOOGLE MOUNTAIN VIE CA`
+  and ~490 an untagged `GOOGLE ONE, MOUNTAIN VIEW, CA` variant at that price in Aug (Jul: 4,435 and ~430 of 6,347).
+- Untagged `GOOGLE…ONE` merchids (no main brand) are never in TXNS_CORE: ~5k panel accounts a month since 2025, 12-13k Jun-Aug 2026.
+  They already pass INCLUDE_RE; the pull (card_ereceipt_rules.CARD_OMEGA_SQL) now takes them.
+- `GOOGLE *GOOGLE MOUNTAIN VIE` is a truncated generic Google descriptor (10k accounts Jul 2025, ~40-50k Nov 2025-May 2026,
+  71-75k Jul-Aug 2026, 6k from Sep 2026 when the SKU codes arrive); ~48% of its charges sit at Google One price points.
+  User decision: include it at AI prices (added to INCLUDE_RE). Risk: other Google charges at $9.99 / $19.99 read as Gemini.

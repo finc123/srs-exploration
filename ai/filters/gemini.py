@@ -32,6 +32,7 @@ PROVIDER = "gemini"
 INCLUDE_RE = re.compile(
     r"GOOGLE\W*G1(?:SK|AI)|GOOGLE\W*G1 "      # SKU descriptors from 2026-09-15 (GOOGLE *G1SK002M, *G1AI101M)
     r"|GOOGLE\W*TTTTT"                       # Fable masks the SKU token as 'ttttt' (window-limited below)
+    r"|GOOGLE\W*GOOGLE MOUNTAIN VIE"          # truncated generic form (user decision 2026-10-26, see report)
     r"|GOOGLE\W*(?:GOOGLE\W*)?(?:ONE|STORAGE)"
     r"(?=[^A-Z]|$|XXX|G\.?CO|MOUNTAIN|LONDON|DUBLIN|HALIFAX|INTERNET|GOOGLE|PURCHASE|SUPPORT|PAYMENT)"
 )

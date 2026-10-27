@@ -3,7 +3,7 @@ provider filters are narrowed afterwards from the cached rows)."""
 
 # ILIKE patterns, lowercase. Grouped by provider for the per-provider review.
 KEYWORDS = {
-    "chatgpt":    ["%chatgpt%", "%chat gpt%", "%openai%", "%open ai%"],
+    "chatgpt":    ["%chatgp%", "%chat gpt%", "%openai%", "%open ai%"],  # %chatgp% also catches the truncated "GOOGLE *CHATGP"
     "claude":     ["%anthropic%", "%claude.ai%", "%claude ai%", "%claude by%", "%claude sub%", "%claude pro%", "%claude max%", "%claudeai%", "%.ai subscri%"],
     "gemini":     ["%google one%", "%google*google one%", "%googleone%", "%gemini%", "%google ai pro%", "%google ai ultra%", "%google storage%", "%google *google storage%", "%g1sk%", "%g1ai%", "google%*g1 %", "%google%ttttt%"],
     "grok":       ["%grok%", "%x.ai%", "%xai %", "% xai%", "%x corp%", "%xcorp%", "%twitter%", "%x premium%", "%corp. paid f%", "%corp paid f%", "%corp. pa 865%", "% x.com%", "x.com%", "%*x.com%"],

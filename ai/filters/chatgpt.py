@@ -24,12 +24,15 @@ import numpy as np
 import pandas as pd
 
 PROVIDER = "chatgpt"
-OPENAI_RX = r"CHAT ?GPT|OPEN ?AI(?!R)"
+# Some issuers truncate the descriptor to 15 characters: "GOOGLE *CHATGP MOUNTAIN VIE CA", "PAYPAL *OPENAI *CHATGP"
+# (no trailing T; grew from Oct 2025, ~3.8k panel rows a month in Aug 2026). CHATGP must be a whole token.
+GPT = r"CHAT ?(?:GPT|GP\b)"
+OPENAI_RX = GPT + r"|OPEN ?AI(?!R)"
 NOT_MERCHANT_RX = r"XFER|TRANSFER|\bFROM SHARE|\bTO SHARE|\bTO LOAN|PAYROLL|DIRECT DEP|DEPOSIT|\bREPAY"
-GOOGLE_RX = r"GOOGLE.{0,4}CHAT ?GPT"
+GOOGLE_RX = r"GOOGLE.{0,4}" + GPT
 CREDIT_RX = r"CHATGPT CRED|CHATGPT CR\b|OPENAI\* ?CHATGPT CR"
 BUSINESS_RX = r"CHATGPT (?:FOR )?BUSINESS|CHATGPT TEAM"
-CHATGPT_RX = r"CHAT ?GPT|OPENAI ?\* ?CH|OPENAIOPCO|OPENAI - OPENAI|PAYPAL.{0,20}OPENAI"
+CHATGPT_RX = GPT + r"|OPENAI ?\* ?CH|OPENAIOPCO|OPENAI - OPENAI|PAYPAL.{0,20}OPENAI"
 # ChatGPT-named descriptors without OPENAI are third-party apps (Sider, Superpower ChatGPT, ChatGPT Writer, Gumroad
 # GPT guides ...) unless they look like OpenAI's own subscription descriptor.
 FIRST_PARTY_RX = r"OPENAI|CHAT ?GPT ?SU|CHATGPT S\b|^\s*CHAT ?GPT( PLUS)?\s*$|PAYMENT TO CHATGPT|PAYPAL.{0,25}CHATGPT|CHATGPT PAYPAL"

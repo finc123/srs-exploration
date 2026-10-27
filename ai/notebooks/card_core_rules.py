@@ -1,7 +1,7 @@
 """Engine for card_gross_adds.ipynb: AI subscription payments, TR30 subscribers and gross adds on the Omega 2022 panel.
 
 Source: EARNEST.COMMON.TXNS_CORE_V for the five brands, plus unbranded rows from the Omega share by descriptor
-(ChatGPT web and Play, Muse web and Play, Claude and Perplexity Play, Perplexity's brandless Jun-Oct 2026 descriptor,
+(ChatGPT web and Play incl. the truncated 'CHATGP' form, Muse web and Play, Claude and Perplexity Play, Perplexity's brandless Jun-Oct 2026 descriptor,
 Google One's SKU-code descriptors from 2026-09-15: their merchids have no main brand, so TXNS_CORE never picks them up). Same row logic as TXNS_CORE:
 2022 consistent-shopper panel, affected accounts excluded.
 
@@ -53,10 +53,10 @@ def pull(warehouse="ANALYST_XL"):
             SELECT d.merchid, d.merchdesc FROM {OMEGA}.MID_V1_0 d
             LEFT JOIN {OMEGA}.MID_MATCH_V1_0 m ON m.merchid = d.merchid
             WHERE m.main_brand_id IS NULL
-              AND d.merchdesc ILIKE ANY ('%CHATGPT%', '%OPENAI%', '%METAPAY%META.COM%', '%MUSE FROM META%',
+              AND d.merchdesc ILIKE ANY ('%CHATGP%', '%OPENAI%', '%METAPAY%META.COM%', '%MUSE FROM META%',
                                          '%CLAUDE BY%', '%CLAUDEAI%', '%CLAUDE.AI%', '%ANTHROPIC%', '%PERPLEX%',
                                          '%GOOGLE%G1SK%', '%GOOGLE%G1AI%'))
-        SELECT CASE WHEN c.merchdesc ILIKE '%CHATGPT%' THEN -27440
+        SELECT CASE WHEN c.merchdesc ILIKE '%CHATGP%' THEN -27440
                     WHEN c.merchdesc ILIKE ANY ('%G1SK%', '%G1AI%') THEN -32111
                     WHEN c.merchdesc ILIKE ANY ('%CLAUDE BY%', '%CLAUDEAI%', '%CLAUDE.AI%', '%ANTHROPIC%') THEN -29847
                     WHEN c.merchdesc ILIKE '%PERPLEX%' THEN -29069
@@ -99,7 +99,7 @@ FAMILIES = {
     "chatgpt": [
         ("Google Play", r"GOOGLE"),
         ("CHATGPT SUBSCR", r"CHATGPT ?SU"),
-        ("CHATGPT (other)", r"CHATGPT"),
+        ("CHATGPT (other)", r"CHAT ?GPT|\bCHATGP\b"),
         ("bare OPENAI", r"OPENAI"),
     ],
     "gemini": [

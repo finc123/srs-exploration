@@ -1,0 +1,69 @@
+I want to be able to visually compare gross adds, churn, and net adds, for each AI provider, across both the e-receipt and card panels. I want charts that show the level difference, and the difference in trends, over time. The end goal is for me to make a decision on how we use (or combine) both datasets to track gross adds, churn, and thus net adds, across different AI providers over time, and I will use this as part of our web app on Consumer AI.
+
+  (1) Create a new notebook card_ereceipt_comparison.ipynb.
+  (2) We should have a section for each provider. The start of each section should explain the e-receipt and card filters to identify subscription-related transactions, including a note on which channels each data source observes for that given provider.
+  (3) We should first fix the panel for each datasource -- for the card data, we should filter to the 2022 consistent shopper panel. For e-receipt data, we should filter to mailboxes that joined before 2023.
+  (4) For card data, we should ensure that we are using the updated pattern matching logic for ChatGPT (without the 't'). For e-receipt data, we should only count churns where that mailbox has had a gross add since its last cancellation email (i.e., if we weren't counting that mailbox as a subscriber, we shouldn't be counting the churn).
+  (5) We should either be showing the query from the tables directly in the notebook, or at least in a separate python file, so that we can easily use the logic in our AI web app -- for e-receipt this would be querying from SRS_SLICE.COMMON.ITEMS_V, and for card data typically we would be EARNEST.COMMON.TXNS_CORE_V, but given the tagging isn't correct, we should use EARNEST.COMMON.TXNS_CORE_V for the tagged rows, and for the untagged rows SHARE_CE_PRIME_ENRICHED_OMEGA_2822.PRIME_OMEGA.TRANS_V1_0, ensuring we are using the 2022 consistent panel across both.
+  (6) Gross adds is defined as we normally do with the e-receipt and card data. Churn in the card data should be defined using a 40 day cutoff (unless the subscription is annual, in which case we should use a 385 day cutoff). For the e-receipt data, churn is defined as the cancellation email, but is only counted if the mailbox is in a subscription state prior to the cancellation email (i.e., if we weren't counting that mailbox as a subscriber prior to the cancellation, we shouldn't count that as churn).
+  (6) We should have 3 charts in each section -- one comparing gross adds, one comparing churn, and one comparing net adds (gross - churn) between e-receipt, card, and Yipit. Each chart should have dual y-axis, with card and e-receipt on one axis, and Yipit data using the secondary axis.
+
+Decisions (agreed 26 Oct 2026, answers to clarifying questions)
+
+  Scope
+  - Providers: ChatGPT, Claude, Gemini, Perplexity, Grok, Muse. Priority if time/space is short: ChatGPT, Claude, Gemini, Muse.
+  - Level: provider level only (no plan split for now).
+  - Comparison is at the channel level: each source counts every channel it observes. Apple (iTunes) trends therefore appear in e-receipt only; card sees web/direct + Google Play.
+  - Period: monthly, Jan 2024 through Aug 2026 (Aug 2026 is the last month with settled 40-day card churn).
+
+  Yipit
+  - Source: plans/yipitdata_consumer_ai.xlsx, tab 'Monthly Metrics', US rows from row 123 down.
+  - Yipit gross adds = New Signup + Re-Signup + Upgrade. Yipit churn = Churn row (not available for Muse). Yipit net adds = gross adds - churn.
+
+  Panels
+  - Card: 2022 consistent-shopper panel (aggregate_consistent_shopper_2022_v2), affected accounts excluded, on both TXNS_CORE_V and the Omega TRANS_V1_0 untagged rows.
+  - E-receipt: mailboxes with ENTRY_DATE < 2023-01-01 in SRS_SLICE.COMMON.ITEMS_V; mailboxes that later become inactive are dropped retroactively.
+  - Weighting: card counts are UNWEIGHTED (each account = 1 add / 1 churn), matching the existing card notebooks and the
+    unweighted e-receipt panel. Reason: weight_agg_cs2022 is a static per-account weight with only 26 distinct values
+    (0.09-5.23, median 0.72, mean 1.70; ~45% of accounts at 0.34), not centred on 1, and halves the effective sample
+    (3.6M -> ~1.85M). Revisit once we know how Consumer Edge builds it.
+
+  Definitions
+  - Card gross add: first payment with no payment for the same provider in the prior 40 days (385 days after an annual payment), so adds and churn reconcile.
+  - Card churn: no further payment within 40 days of the last payment (385 days if annual); dated at last payment + 40 days (385 for annual).
+  - Card annual / plan detection: reuse card_core_rules.classify() (descriptor first, then repeat-charge rule for price collisions).
+  - Card ChatGPT descriptor: CHATGP pattern (no 't') so truncated Google Play / PayPal descriptors are captured.
+  - E-receipt gross add: as channel_rules.py -- first sign-up or paid email in a series (new series after a 75-day gap, 400 days after an annual, or after a cancellation).
+  - E-receipt churn: a cancellation email, counted only if the mailbox has had a gross add for that provider on ANY channel since its last counted cancellation (i.e. it was in a subscription state). Pre-2023 email history counts towards that state.
+
+  Follow-up decisions (26 Oct 2026, after checking the data)
+  - Muse: section DROPPED (launched 7-8 Sep 2026, after the Jan 2024-Aug 2026 window).
+  - Yipit 'US Subscriber Behavior' covers ChatGPT, Gemini, Claude, Perplexity only: Grok charts show card vs e-receipt
+    with no Yipit line / secondary axis (noted in the section).
+  - Grok = SuperGrok (xAI-billed) + X Premium+ (X Corp-billed) as ONE line, on both card and e-receipt; a member paying
+    for both counts once. Grok is not tagged in TXNS_CORE_V (X.AI / X.COM brands not in the brand selection), so all
+    Grok card rows come from Omega TRANS_V1_0 by descriptor (2022 panel, affected accounts excluded).
+  - Layout per provider section: a 4 x 3 grid. Rows = Direct/web, Google Play, iTunes, Total. Columns = gross adds,
+    churn, net adds. Left axis = e-receipt and Yipit provider total (both e-receipt panels; changed 26 Oct
+    at user request); right axis = card. iTunes row has no card line
+    (cards can't see Apple).
+  - Total row = simple SUM of the channel rows for card and for e-receipt (no cross-channel dedupe).
+
+  Gemini decisions (26 Oct 2026, after the first run)
+  - 2TB counts as AI Plus (adds) on both sources: cards from 27 Jan 2026 (existing rule); e-receipts now count the
+    May-Jun 2026 Google Play rename to 'Google AI Plus (2 TB)' as adds (exclusion removed).
+  - Card pull adds untagged 'GOOGLE…ONE' merchids (e.g. 'GOOGLE ONE, MOUNTAIN VIEW, CA') and the truncated generic
+    'GOOGLE *GOOGLE MOUNTAIN VIE' (included at AI prices via filters/gemini.py), which carried the Google One charges
+    missing in Jul-Aug 2026.
+
+  Code / notebook
+  - One new module holding all SQL and rules (e.g. notebooks/card_ereceipt_rules.py), so it can be reviewed and reused in the AI web app; the notebook shows the queries.
+  - Where logic is reused from other workstreams (card_core_rules.py, channel_rules.py, filters/*.py, card_net_rules.py), list those files at the top of the notebook/module so they can be found and reviewed.
+  Port to the SRS app (26 Oct 2026; branch feat/ai-consumer-subs, US e-receipt email flows)
+  - Subscription-state churn rule applies to ALL providers (incl. Muse).
+  - Panel: pre-2023 cohort (ENTRY_DATE < 2023-01-01, still ACTIVE), same as the notebook.
+  - Totals: simple SUM of channels, no cross-channel de-duplication, in app and notebooks. Measured: dedupe removes
+    <1% of adds/churn except Gemini adds (9.7%, Google One welcome + Play receipt); correlations vs Yipit unchanged.
+  - Provider level only: plan split dropped from the export for now (code kept); plans to be designed later.
+  - Also port: Gemini 2TB rename counted as adds; Grok = SuperGrok + X Premium+ (+ SpaceXAI LLC cancels);
+    history read from 2022-11 so the state rule sees pre-window subscriptions.

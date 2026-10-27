@@ -40,7 +40,7 @@ The active base is also close to fixed: 99.9% of members had a transaction in th
 """,
     "crosscheck": """
 **Finding: with the patch, the brand pull matches the earlier keyword extract.**
-- ChatGPT, Claude and Perplexity agree at a ratio of 1.00 (Perplexity is 0.93 in Jul-Sep 2026, the brandless-descriptor window).
+- Claude and Perplexity agree at a ratio of 1.00 (Perplexity is 0.93 in Jul-Sep 2026, the brandless-descriptor window). ChatGPT is 1.00 to Sep 2025, then 1.01-1.02: the brand pull now also matches the truncated `GOOGLE *CHATGP` descriptor (fixed 2026-10-26), which the Oct-19 keyword extract missed.
 - Gemini shows about 2x more AI Pro payments in 2024. The brand pull catches `GOOGLE *ONE AI PREMIUM…` descriptors that the old keyword prefilter missed, so the new series is the better one.
 - Without the patch, ChatGPT would be about 3% of its true level, Claude about 57% before 2025, Perplexity about 10% in Jun-Sep 2026, and Gemini about half from mid-September 2026. The brands need these merchants mapped before `TXNS_CORE` can be used on its own.
 """,

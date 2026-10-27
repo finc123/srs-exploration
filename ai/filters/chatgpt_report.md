@@ -9,14 +9,14 @@ Filter: `filters/chatgpt.py` (`classify(df, panel)`; it adds `note`, `dclass` an
 ## Descriptors (upper-cased; first match wins)
 | class | rule | treatment |
 |---|---|---|
-| not OpenAI | no `CHAT ?GPT\|OPEN ?AI(?!R)` ("OPEN AIR" markets) | dropped |
+| not OpenAI | no `CHAT ?(GPT\|GP\b)\|OPEN ?AI(?!R)` ("OPEN AIR" markets) | dropped |
 | not a merchant charge | `XFER\|TRANSFER\|FROM SHARE\|TO LOAN\|PAYROLL\|DIRECT DEP\|DEPOSIT\|REPAY` | dropped |
 | sora | `SORA` (Sora by OpenAI Play app/add-ons; US 635 rows at $4/$8/$12/$20) | rejected |
-| google_play | `GOOGLE.{0,4}CHAT ?GPT` (incl. PayPal-funded "GOOGLE CHATGPT") | kept, `channel=google_play`, Play bands |
+| google_play | `GOOGLE.{0,4}CHAT ?(GPT\|GP\b)` (incl. PayPal-funded "GOOGLE CHATGPT" and the truncated "GOOGLE *CHATGP") | kept, `channel=google_play`, Play bands |
 | third-party app | ChatGPT-named descriptor without `OPENAI` or an OpenAI subscription pattern: Sider, Superpower ChatGPT, ChatGPT Writer, ChatGPT Premium (HK), Gumroad, CHATGPTBUILDER… | dropped |
 | credits | `CHATGPT CRED\|CHATGPT CR\b` (Codex/Sora packs: 10/20/40/90/160) | rejected |
 | business | `CHATGPT (FOR )?BUSINESS\|CHATGPT TEAM` (44 US rows) | rejected |
-| chatgpt | `CHAT ?GPT\|OPENAI ?\* ?CH\|OPENAIOPCO\|OPENAI - OPENAI\|PAYPAL.{0,20}OPENAI` | banded |
+| chatgpt | `CHAT ?(GPT\|GP\b)\|OPENAI ?\* ?CH\|OPENAIOPCO\|OPENAI - OPENAI\|PAYPAL.{0,20}OPENAI` | banded |
 | openai_bare | any other `OPENAI` | banded, plus a recurrence test |
 
 Rows / uids by class:
@@ -142,6 +142,7 @@ Removing the lag filter raised the 25–35-day share: UK from 91.3% to 92.8%, FR
 Pro 500 payers in October 2026: omega 3, de 4, es 1.
 
 ## Caveats
+- **Truncated descriptor "CHATGP" (fixed 2026-10-26).** Some issuers cut the descriptor to 15 characters and drop the final T: `GOOGLE *CHATGP MOUNTAIN VIE CA` (also `POS GOOGLE CHATGP…`, `CHECK GOOGLE *CHATGP…`) for Google Play, and `PAYPAL *OPENAI *CHATGP` for web billed through PayPal. In the US 2022 panel the Google Play form grows from about 700 rows in Oct 2025 to 1.2-1.7k a month in Nov 2025-Jan 2026 and 3.3-3.8k in Jul-Aug 2026, then falls back to about 700 in Sep 2026. The PayPal form is about 1k rows a month from Jul 2026. The old pattern `CHAT ?GPT` missed both, so those subscribers looked like churners and then re-added; it showed as card churn spikes for ChatGPT Google Play in those months (`notebooks/card_net_adds.ipynb`). `CHATGP` must be a whole token, so look-alikes such as `SNAPCHATG.CO` and `EMOCHI CHATG.CO` stay out. The card pull (`notebooks/card_core_rules.py`) now matches `%CHATGP%` (these merchants have no main brand in Omega, so the unbranded patch picks them up). Claude, Perplexity and Gemini Google Play show a similar Jul-Aug 2026 skip, which has not been checked for truncated descriptors yet.
 - **The FR decline in Plus from mid-2025 needs checking against FR panel active members.** Plus→Go downgrades explain part of it.
 - **US descriptor formats change with the bank feed.** "POINT OF SALE…" is replaced by "SXONG…" from Apr 2026, and "DC : PURCH" appears in Jun 2026. Counts at uid level are unaffected.
 - **US Plus payers rise 37% from Jun to Sep 2026** across all descriptors. Check this against panel active members.
