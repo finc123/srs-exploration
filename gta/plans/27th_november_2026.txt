@@ -37,10 +37,41 @@ DONE (27 Oct 2026): https://claude.ai/artifact/6ndZKvPYuwXA2RWJnp6hz4
 ## Investigations (opened 27 Oct 2026)
 
 1. GTA VI vs BF6 ratio. On explicit console owners aligned on days to launch, we see GTA VI at ~8.5x BF6 (3.92% vs 0.46% at -24 days), far above MScience (3.2x Modern Warfare II, US+EU) and Yipit (3.7x BF6). Find what drives the gap. Main concern: time. Most receipts we see come from the digital stores (PlayStation Store, Microsoft Store), so part of the delta could be the growing share of digital vs physical purchases between 2025 and 2026. Also test: unit counts vs penetration, PC inclusion, channel-by-channel ratios, panel/parse drift in store receipts, and our own GTA VI vs MWII multiple on MScience's basis.
-   Status: OPEN.
+   Status: DONE (27 Oct 2026). Notes: notes/inv1_gta_bf6_ratio.md; code: penetration/inv1_ratio.py.
+   Result: the gap is definitional, not data. Bridge from our 8.5x: drop console-owner base 9.0x -> raw buyers, no panel-size adjustment 7.3x (panel shrank 18%) -> units 7.3x -> add BF6 PC units (Steam/EA app/Epic, ~half of BF6) 3.7x = Yipit's 3.7x. This reproduces Yipit Vol. 14-17 within ~0.4x, so Yipit's BF6 base includes PC.
+   - Digital shift is small: digital share of console base-game units for annual franchises 87% (2024) -> 91% (2025) -> 94% (2026), worth ~3-4% at most. Store coverage per member is flat to slightly down. Retail-only ratio (18.9x, n=56 BF6 units) is higher, not lower, than digital (PSN 10.2x, MS Store 4.6x).
+   - Alignment moves our multiple from 5.1x (same days since open) to 7.3x (same % of window) to 8.5x (same days to launch). BF6 pre-orders were late-loaded (61% of pre-launch buyers in the last 24 days).
+   - Base composition is not a factor (common-cohort 8.7x).
+   - On MScience's basis (US, console, panel-size adjusted, same days since open): MWII pre-beta 3.7-4.3x (MSc 3.2x, US+EU), Hogwarts 11.7x (MSc >13x), Spider-Man 2 5.0x (MSc >6x). Our data is consistent with MScience.
+   - Recommendation: keep % of console owners as the headline (show BF6 as a 5.1-8.5x range by alignment); add a comparable line = GTA console units / comparable all-platform units when scaling to reported sales; prefer Call of Duty comparables (MWII, BO6, ~3-4x) over BF6.
 
 2. Roblox overlap. MScience: ~13% of GTA VI pre-purchasers made a Roblox console transaction, ~22% across all channels. Yipit: 1.65% of Roblox payers have pre-ordered GTA VI (through 11 Oct). Compute ours: mailboxes in the e-receipt panel with a Roblox transaction in the past 6 months, and the % that pre-purchased GTA VI (and the reverse direction to match MScience). Do we differ significantly?
-   Status: OPEN.
+   Status: DONE (27 Oct 2026). Notes: notes/inv2_roblox_overlap.md; code: penetration/inv2_roblox.py.
+   Result: no significant difference; both vendor figures reproduce.
+   - Yipit basis (Roblox payers in prior 6 months who pre-ordered GTA VI, as of 11 Oct): 1.66% all mailboxes / 1.85% active panel vs Yipit 1.65%. 2.13% (panel) as of 26 Oct. Console Roblox payers 6.9% (PSN 8.7%, Xbox 5.0%), mobile-only 1.0%.
+   - MScience basis (GTA VI pre-orderers with Roblox spend, active panel): all history 13.8% console / 23.9% any channel vs MSc ~13% / ~22%. Over 6 months only 4.8% / 10.3%; 12 months 7.1% / 14.0%. MSc's "historically" = multi-year look-back.
+   - The two are consistent: Yipit divides by Roblox payers (~85% mobile/direct), MScience by GTA pre-orderers (a console cohort).
+   - Spend premium (Yipit $112 vs $85) is channel mix, not heavier spending: 6-month 1.21-1.28x, flat pre-order rate across spend quintiles.
+   - Coverage caveats: roblox.com direct receipts jump ~15x in Nov 2025; Apple halves through 2026 as direct rises (web checkout shift); PSN Robux from Oct 2023. Gift cards add <1.5pp.
 
 3. High-spender cohorts. Can we identify high gaming spenders in the e-receipt data (e.g. $ spend in the past 12 months at PlayStation Store / Microsoft Store), and does GTA VI penetration vary by spend cohort? Find which statistics best establish high spenders and suggest thresholds.
-   Status: OPEN.
+   Status: DONE (27 Oct 2026). Notes: notes/inv3_spend_cohorts.md; code: penetration/inv3_spend_cohorts.py.
+   Result: yes. GTA VI penetration rises steadily with 12-month gaming spend (before 25 Jun 2026): $0 0.5% -> $100-250 4.3% -> $500-1,000 10.7% -> $1,000+ 16.1% (all channels); BF6 shows the same pattern on its own window.
+   - Best single predictor: 12-month PSN + MS Store spend (AUC 0.81 GTA VI / 0.85 BF6; 0.76 among store-visible owners), then all-channel spend (0.79), paid transactions, recency, full-price game count.
+   - Spend cleaning needed: Epic $0 free claims at list price, wallet top-ups/gift cards (double count), Microsoft 365/Windows (33% of MS Store $), $0 PSN claims, CAD-priced rows, resellers (immaterial).
+   - Recommended cohorts (same thresholds for GTA VI and BF6): primary = store spend High >=$500 (6.5% of base, 17.1% pen, 4.35x; BF6 21.1%), Mid $250-500 (8.8%, 10.6%), Light $1-250 (26.9%, 5.5%), store $0 rows only (6.6%, 1.7%), no store row (51.2%, 0.6%). Alternatives: all-channel spend (not tied to store visibility) or 2+ full-price games in 12 months (14.8% of base, 12.9%, works for retail too). GTA+/Shark Cards and subscriptions as overlays only.
+   - Biases: store-spend cohorts partly measure account visibility; household-level mailboxes; retail spend understated (Walmart null prices); gross not net. Lifts transfer better than levels.
+
+## High-spender cohort (decided 27 Oct 2026)
+
+1. Define the high-spending cohort as explicit console owners (same base rules as above) who spent $250+ on gaming at the PlayStation Store + Microsoft Store in the 12 months before the game's pre-order launch date. Spend is cleaned as in Investigation 3 (excludes $0 claims, wallet top-ups / gift cards, Microsoft 365 / Windows, console hardware; CAD prices deflated).
+   - GTA VI window: 25 Jun 2025 - 23 Jun 2026 (pre-orders opened 25 Jun 2026).
+   - BF6 window: 31 Jul 2024 - 29 Jul 2025 (pre-orders opened 31 Jul 2025).
+2. Add lines to the artifact showing cumulative pre-purchase adoption for the high-spender cohort of each game (GTA VI and BF6), on the same days-to-launch alignment.
+   Status: DONE (27 Oct 2026).
+3. Add a $0 store-spend cohort for comparison: explicit owners with no paid PlayStation Store + Microsoft Store gaming spend in the same 12-month window (includes owners with no store receipt at all). Lines added for GTA VI and BF6.
+   Status: DONE (27 Oct 2026).
+4. Simplify the chart to 3 lines per game (6 total): all explicit owners, high spenders ($250+), and not high spenders (everyone else, under $250 incl. $0). PS5/Xbox platform lines and the $0-only line are removed from the chart (still computed in penetration/gta6_penetration.json).
+   Status: DONE (27 Oct 2026).
+5. Add a second chart (same days-to-launch x-axis, own y-axis; no dual axis): not-high spenders' share of cumulative buyers divided by their share of that game's owner base (GTA VI 84.7%, BF6 82.5%). 1.0 = buyers mirror the base; lower = skewed to high spenders. Lines start once a game has 25+ cumulative buyers.
+   Status: DONE (28 Oct 2026). Result: GTA VI ~0.55-0.57 throughout pre-orders (47-48% of buyers are not-high spenders); BF6 ~0.25-0.28 pre-launch (21-23%), rising to 0.38 at launch and 0.42 by +51. BF6 pre-orders were roughly twice as skewed to high spenders as GTA VI's.

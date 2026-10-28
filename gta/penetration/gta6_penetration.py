@@ -18,6 +18,7 @@ GAMES = {
 }
 BF6_EXCLUDE = r"BETA|PACK|BFC|ADD-ON|TEXTURE|SHARED DATA|SINGLE PLAYER|MULTIPLAYER|MARKER|PRO -|BUNDLE|UPGRADE|SEASON"
 PC_STORES = ["Steam", "Origin", "Epic Games", "Google Play"]
+HI_SPEND = 250   # high-spender cohort threshold, USD in the 12 months before pre-order open
 
 # explicit console rows (same rules as console_owners.py: description flags + row-level price check)
 d = pd.read_parquet(C + "desc_cls.parquet")[["MERCHANT_NAME", "H", "EXPLICIT_PS5", "EXPLICIT_XSX"]]
@@ -62,12 +63,18 @@ for game, cfg in GAMES.items():
     bases = {"PS5": set(pre.loc[pre["EXPLICIT_PS5"], "MAILBOX_ID"]) & joined,
              "XSX": set(pre.loc[pre["EXPLICIT_XSX"], "MAILBOX_ID"]) & joined}
     bases["ANY"] = bases["PS5"] | bases["XSX"]
+    # high spenders: $250+ PSN + MS Store gaming spend in the 12 months before open (features from inv3_spend_cohorts.py)
+    feat = pd.read_parquet(f"inv3_out/features_{game}.parquet")
+    bases["HI"] = bases["ANY"] & set(feat.index[feat["USD_STORE"] >= HI_SPEND])
+    # zero spenders: no paid PSN + MS Store gaming spend in the same window (incl. owners with no store row at all)
+    bases["ZERO"] = bases["ANY"] & set(feat.index[feat["USD_STORE"].fillna(0) == 0])
+    bases["NOTHI"] = bases["ANY"] - bases["HI"]   # everyone below $250, incl. $0
     g = buyers(game, cfg)
     last_day = (pd.Timestamp(cfg["last"]) - open_).days
     gd = {"open": cfg["open"], "launch_day": (pd.Timestamp(cfg["launch"]) - open_).days, "last_day": last_day,
           "last_date": cfg["last"], "series": {}}
     for key, base in bases.items():
-        rows = g if key == "ANY" else g[g["PLAT"] == key]
+        rows = g if key in ("ANY", "HI", "ZERO", "NOTHI") else g[g["PLAT"] == key]
         first = rows.groupby("MAILBOX_ID")["DAY"].min().reindex(list(base)).dropna()
         cnt = first.value_counts().reindex(range(last_day + 1), fill_value=0).cumsum()
         gd["series"][key] = {"base": len(base), "buyers": int(len(first)),
