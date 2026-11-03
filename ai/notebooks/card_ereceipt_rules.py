@@ -18,6 +18,8 @@ card_spend_daily() -> kept AI-plan spend and paying accounts per provider x day 
                    built by ../app/refresh_local.py; includes Muse)
 app_card_flows() -> card_monthly() for the app's Provider Analysis 'Source' (from 2025-01, six providers, latest data)
 app_card_plans() -> active card subscribers per provider x plan at each month-end (app plan share)
+app_card_flows_daily() -> card gross adds / churn / net adds per provider x day (app Provider Market Share, Card)
+panel_accounts() -> card panel size (Provider Market Share Card '% of Panel' denominator)
 panel_spend_daily() -> total panel spend at tagged merchants per day (Spend '% of Panel' denominator), cached
 receipt_monthly() -> the same from e-receipts (first email in a series; cancellations only while subscribed)
 yipit()         -> Yipit US Subscriber Behavior: gross adds (New + Re-Signup + Upgrade), churn, net adds
@@ -288,18 +290,46 @@ def app_card_plans(pay: pd.DataFrame, end: pd.Timestamp) -> pd.DataFrame:
     """Active card subscribers per provider x plan at each month-end from APP_START: accounts whose latest payment on
     or before the month-end (per provider x channel) is under CUTOFF days old (CUTOFF_ANNUAL after an annual payment),
     the same rule that ends a card_spells() spell. Plan = that payment's tier (monthly and annual pooled); an account
-    counts once per provider x plan. Month-ends after end - CARD_LAG are left out (payments still posting)."""
+    counts once per provider x plan. Month-ends after end - CARD_LAG are not yet observable (payments still posting):
+    the partial month is shown as of end - CARD_LAG instead, until its month-end can be counted."""
     last = end - pd.Timedelta(days=CARD_LAG)
     p = pay[pay.plan.notna()].assign(tier=lambda d: d.plan.str.replace(r"_[MA]$", "", regex=True))
     out = []
     for me in _app_months(end)[0].to_timestamp(how="end").normalize():
-        if me > last:
-            continue
+        me = min(me, last)
         x = p[(p.dt <= me) & (p.dt > me - pd.Timedelta(days=CUTOFF_ANNUAL))]
         x = x.sort_values(["dt", "cadence"]).drop_duplicates(["uid", "provider", "channel"], keep="last")
         x = x[(me - x.dt).dt.days < np.where(x.cadence.eq("A"), CUTOFF_ANNUAL, CUTOFF)]
-        out.append(x.groupby(["provider", "tier"]).uid.nunique().rename("subscribers").reset_index().assign(month=me))
+        out.append(x.groupby(["provider", "tier"]).uid.nunique().rename("subscribers").reset_index()
+                   .assign(month=me, partial=not me.is_month_end))
     return pd.concat(out, ignore_index=True)
+
+
+PANEL_ACCOUNTS_SQL = f"""
+SELECT COUNT(DISTINCT cardlinkid) AS accounts FROM {OMEGA}.CARDLINK_PANEL_V1_0 p
+WHERE panel = '{PANEL}'
+  AND NOT EXISTS (SELECT 1 FROM {OMEGA}_STATIC.AFFECTED_ACCOUNTS_092026 a WHERE a.cardlinkid = p.cardlinkid)
+"""
+
+
+def panel_accounts(warehouse="ANALYST_L") -> int:
+    """Accounts in the card panel (2022 consistent shoppers, affected accounts excluded): the same panel as the pulls."""
+    return int(_get(_cursor(warehouse), PANEL_ACCOUNTS_SQL).iloc[0, 0])
+
+
+def app_card_flows_daily(pay: pd.DataFrame, end: pd.Timestamp) -> pd.DataFrame:
+    """Card gross adds (spell starts), churn (spell lapse dates) and net adds per provider x day, from CARD_START to
+    end - CARD_LAG: accounts counted once a day per channel, channels summed (as app_card_flows' 'total'). Churn is
+    dated only once observable, so every day shown is complete."""
+    last = end - pd.Timedelta(days=CARD_LAG)
+    s = card_spells(pay, end)
+    a = s[s.start <= last].groupby(["provider", "channel", "start"]).uid.nunique().groupby(level=[0, 2]).sum()
+    c = s.dropna(subset=["churn_dt"]).groupby(["provider", "channel", "churn_dt"]).uid.nunique().groupby(level=[0, 2]).sum()
+    idx = pd.MultiIndex.from_product([sorted(pay.provider.unique()), pd.date_range(CARD_START, last)], names=["provider", "date"])
+    t = pd.DataFrame({"gross_adds": a.rename_axis(["provider", "date"]), "churn": c.rename_axis(["provider", "date"])})
+    t = t.reindex(idx).fillna(0).astype(int).reset_index()
+    t["net_adds"] = t.gross_adds - t.churn
+    return t
 
 
 # ---- e-receipt rules (ported from _make_direct_v_channel.py) ---------------------------------------------------------

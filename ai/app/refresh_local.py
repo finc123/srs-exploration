@@ -8,7 +8,7 @@ Local only (not in the srs job yet): sections card_spend_daily (observable AI-pl
 card_panel_spend_daily (total panel spend at tagged merchants), built by notebooks/card_ereceipt_rules.py: a fresh
 Omega pull on ANALYST_XL (about 15 minutes) and the panel total, cached in .cache/card_ereceipt/panel_spend_daily.parquet
 with its last 45 days re-pulled each run. Also local only: card_flows and card_plans (Provider Analysis card series and
-plan share, from the same card pull), email_plans (e-receipt plan share, the engine's unwritten plan split) and
+plan share, from the same card pull), card_flows_daily (Provider Market Share Card source), email_plans (e-receipt plan share, the engine's unwritten plan split) and
 switching (Switching Heatmap), both from the email_flows events.
 Run from exploration/ai: python app/refresh_local.py [srs checkout; default ../../srs]."""
 import json, os, re, shutil, sys
@@ -134,12 +134,19 @@ spend = C.card_spend_daily(pay, card_end)
 card_flows_sec = [dict(MONTH=str(r.month.start_time.date()), PROVIDER=r.provider, CHANNEL=r.channel,
                        GROSS_ADDS=int(r.gross_adds), CHURN=int(r.churn), NET_ADDS=int(r.net_adds), PARTIAL=bool(r.partial))
                   for r in C.app_card_flows(pay, card_end).itertuples()]
-card_plans_sec = [dict(MONTH=str(r.month.date()), PROVIDER=r.provider, PLAN=r.tier, SUBSCRIBERS=int(r.subscribers))
+card_plans_sec = [dict(MONTH=str(r.month.date()), PROVIDER=r.provider, PLAN=r.tier, SUBSCRIBERS=int(r.subscribers),
+                       PARTIAL=bool(r.partial))
                   for r in C.app_card_plans(pay, card_end).itertuples()]
 panel_spend = C.panel_spend_daily(spend.date.max())
 d0 = fetch("SELECT DISTINCT LOWER(app) AS provider, day0 FROM srs_mcp.ai_consumer.app_usage WHERE country = 'US'")
 spend = spend.merge(d0.rename(columns=str.lower), on="provider", how="left")
 spend["day_n"] = (spend.date - pd.to_datetime(spend.day0)).dt.days
+card_panel = C.panel_accounts()
+cfd = C.app_card_flows_daily(pay, card_end).merge(d0.rename(columns=str.lower), on="provider", how="left")
+cfd["day_n"] = (cfd.date - pd.to_datetime(cfd.day0)).dt.days
+card_flows_daily_sec = [dict(PROVIDER=r.provider, DATE=str(r.date.date()), DAY_N=None if pd.isna(r.day_n) else int(r.day_n),
+                             GROSS_ADDS=int(r.gross_adds), CHURN=int(r.churn), NET_ADDS=int(r.net_adds), PANEL=card_panel)
+                        for r in cfd.itertuples()]
 spend_sec = [dict(PROVIDER=r.provider, DATE=str(r.date.date()), DAY_N=None if pd.isna(r.day_n) else int(r.day_n),
                   SPEND=round(float(r.spend), 2), ACCOUNTS=int(r.accounts))
              for r in spend.sort_values(["provider", "date"]).itertuples()]
@@ -176,6 +183,7 @@ j["freshness"].append(dict(DATASET="Card panel spend (to date)", MAX_DATE=str(sp
 j["sections"]["card_spend_daily"] = spend_sec
 j["sections"]["card_panel_spend_daily"] = panel_sec
 j["sections"]["card_flows"] = card_flows_sec
+j["sections"]["card_flows_daily"] = card_flows_daily_sec
 j["sections"]["card_plans"] = card_plans_sec
 j["sections"]["switching"] = switch_sec
 j["sections"]["email_plans"] = plans_sec
@@ -201,7 +209,9 @@ j["methodology"] += [dict(
                   WHY="As the e-receipt Combined series (no de-duplication across channels).")],
     DEDUPE="One row per transaction; same-day payments for an account x provider x channel are one. Accounts are "
            "counted once per month per channel.",
-    MEASURE="Monthly GROSS_ADDS, CHURN and NET_ADDS by provider x channel. Unweighted panel counts, not scaled to the US.",
+    MEASURE="Monthly GROSS_ADDS, CHURN and NET_ADDS by provider x channel (card_flows), and the same per provider x day "
+            "with channels summed (card_flows_daily, Provider Market Share Source Card). Unweighted panel counts, not "
+            "scaled to the US; PANEL = accounts in the card panel, the % of Panel denominator.",
     LAG=f"Card transactions post over about {C.CARD_LAG} days, so months run to the data end - {C.CARD_LAG} days and the "
         "last one is month-to-date. Churn is dated only once its lapse date has passed.",
 ), dict(
@@ -217,7 +227,9 @@ j["methodology"] += [dict(
                       "2026-10-10, The X Subscription tiers billed by xAI.")],
     DEDUPE="An account counts once per provider x plan at each month-end.",
     MEASURE="SUBSCRIBERS per provider x plan at each month-end; share = a plan over the provider's total. Unweighted.",
-    LAG=f"Month-ends later than the data end - {C.CARD_LAG} days are left out (payments still posting).",
+    LAG=f"Payments post over about {C.CARD_LAG} days, so a month-end is counted once the data end is {C.CARD_LAG} days "
+        f"past it; until then the current month is counted as of the data end - {C.CARD_LAG} days (MONTH = that date, "
+        "PARTIAL), and replaced by the month-end once observable.",
 ), dict(
     KEY="email_plans", TITLE="Provider Analysis: plan share of e-receipt net adds since January 2025 (US)",
     SOURCE="NIQ e-receipts, the same events as the Provider Analysis e-receipt series, split by plan with "

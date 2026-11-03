@@ -187,7 +187,7 @@ const BLOCKS = [
         "Share is each app's slice of the six-app total, shown only on days every app has a value. " +
         "Days since launch counts from each app's day 0 (first day with downloads; Muse: public launch 2026-09-08), for each app's first year.");
       b.el.insertAdjacentHTML("beforeend", `<div class="ctlrows"></div><div class="chart" style="height:340px"><canvas id="c_app"></canvas></div><p class="note" id="c_app_note"></p>`);
-      const st = { Metric: "Downloads", Display: "Level", Smoothing: "TR7D", Geography: "US", Timeline: "Last 90 days", Scale: "Log" };
+      const st = { Metric: "Downloads", Display: "Share", Smoothing: "TR7D", Geography: "US", Timeline: "Last 90 days", Scale: "Log" };
       const launch = sections.app_launch || [], note = document.getElementById("c_app_note");
       // Trailing 7-day mean over consecutive points, null unless all 7 are present.
       const tr7 = s => s.map((_, i) => i < 6 || s.slice(i - 6, i + 1).some(v => v == null) ? null : sum(s.slice(i - 6, i + 1)) / 7);
@@ -239,7 +239,7 @@ const BLOCKS = [
         "Smoothing: Raw is the daily value; TR7D is the trailing 7-day mean, shown only where all 7 days have a value. " +
         "Share is each site's visits over the six-site total that day. Days since launch counts from each app's day 0 (first day with app downloads; Muse: 2026-09-08). Muse starts at launch.");
       b.el.insertAdjacentHTML("beforeend", `<div class="ctlrows"></div><div class="chart" style="height:340px"><canvas id="c_webdata"></canvas></div><p class="note" id="c_webdata_note"></p>`);
-      const st = { Metric: "Visits", Display: "Level", Smoothing: "TR7D", Geography: "US", Timeline: "Last 90 days", Scale: "Log" };
+      const st = { Metric: "Visits", Display: "Share", Smoothing: "TR7D", Geography: "US", Timeline: "Last 90 days", Scale: "Log" };
       const note = document.getElementById("c_webdata_note");
       const tr7 = s => s.map((_, i) => i < 6 || s.slice(i - 6, i + 1).some(v => v == null) ? null : sum(s.slice(i - 6, i + 1)) / 7);
       const go = () => {
@@ -290,7 +290,7 @@ const BLOCKS = [
         "Share is an app's total over the six-app total that day (Total Daily Time Spent and Session Count only), shown only on days every app has a value. " +
         "Days since launch counts from each app's day 0 (first day with app downloads; Muse: 2026-09-08), for app and web alike. A web visit is not an app session: compare apps within a source.");
       b.el.insertAdjacentHTML("beforeend", `<div class="ctlrows"></div><div class="chart" style="height:340px"><canvas id="c_eng"></canvas></div><p class="note" id="c_eng_note"></p>`);
-      const st = { Source: "App", Metric: "Total Daily Time Spent", Display: "Level", Smoothing: "TR7D", Geography: "US", Timeline: "Last 90 days", Scale: "Log" };
+      const st = { Source: "App", Metric: "Total Daily Time Spent", Display: "Share", Smoothing: "TR7D", Geography: "US", Timeline: "Last 90 days", Scale: "Log" };
       const note = document.getElementById("c_eng_note");
       const tr7 = s => s.map((_, i) => i < 6 || s.slice(i - 6, i + 1).some(v => v == null) ? null : sum(s.slice(i - 6, i + 1)) / 7);
       const go = () => {
@@ -352,16 +352,21 @@ const BLOCKS = [
         "Gross adds, churn and net adds from the e-receipt panel (US), as in the monthly email flows: gross add = the first sign-up or paid subscription email in a series; churn = a cancellation email while the mailbox is subscribed; net adds = gross adds − churn. " +
         "Each provider's channels are summed (direct + Google Play + iTunes; Grok and Perplexity Google Play + iTunes). Panel: mailboxes that joined before 2023 and are still active. " +
         "Level = the count; Share = a provider's value over the six-provider total (Net Adds: over providers with positive net adds); % of Panel = the value over every mailbox in the panel, stacked so the total is the share of the panel across all tracked providers. " +
-        "Spend = observable spend on consumer AI plans in the card panel (US, unweighted): the amounts charged on web and Google Play billing, by charge date (annual plans on the day charged). Apple App Store charges don't name the provider, so Apple-heavy providers (Grok, ChatGPT) are understated. Gemini includes 2 TB from 2026-01-27; Grok includes X Premium+. % of Panel for Spend = a provider's AI-plan spend over all panel spend at brand-tagged merchants that day (bank transfers, rent and bills are untagged and left out). The last 10 days are left out while card transactions post. " +
+        "Source: E-Receipt = sign-up and cancellation emails as above; Card = the Omega 2022 consistent-shopper card panel (US, unweighted), gross add = a payment with no earlier one in 40 days (385 after an annual payment), churn = lapse (no payment within 40 / 385 days), web and Google Play billing only (Apple charges don't name the provider), % of Panel over the card panel's accounts. " +
+        "Spend (Card only) = observable spend on consumer AI plans in the card panel (US, unweighted): the amounts charged on web and Google Play billing, by charge date (annual plans on the day charged). Apple App Store charges don't name the provider, so Apple-heavy providers (Grok, ChatGPT) are understated. Gemini includes 2 TB from 2026-01-27; Grok includes X Premium+. % of Panel for Spend = a provider's AI-plan spend over all panel spend at brand-tagged merchants that day (bank transfers, rent and bills are untagged and left out). The last 10 days are left out while card transactions post. " +
         "Smoothing: TR7D is the trailing 7-day mean (daily views only). Days since launch counts from each provider's US app day 0 (Muse: 2026-09-08), for its first year. Monthly starts January 2025; the last month is month-to-date (MTD, lighter).");
       b.el.insertAdjacentHTML("beforeend", `<div class="ctlrows"></div><div class="chart" style="height:340px"><canvas id="c_mshare"></canvas></div><p class="note" id="c_mshare_note"></p>`);
       const M = { "Gross Adds": "GROSS_ADDS", "Churn": "CHURN", "Net Adds": "NET_ADDS", "Spend": "SPEND" };
-      const st = { Metric: "Gross Adds", Display: "Level", Smoothing: "TR7D", Geography: "US", Timeline: "Last 90 days" };
+      const st = { Source: "E-Receipt", Metric: "Gross Adds", Display: "Share", Smoothing: "TR7D", Geography: "US", Timeline: "Last 90 days" };
       const note = document.getElementById("c_mshare_note"), emailPanel = rows[0]?.PANEL;
       // The latest order date is still filling in (NIQ adds recent days over the following mornings): leave it out.
       const emailDates = uniq(rows, "DATE").slice(0, -1);
       const flows = (sections.channel_flows || []).filter(r => r.CHANNEL === "combined" && r.PLAN === "all");
       const emailMonths = uniq(flows, "MONTH"), emailMtd = new Set(flows.filter(r => r.PARTIAL).map(r => r.MONTH));
+      // Card gross adds / churn: daily rows already cut CARD_LAG days before the card data end; monthly from card_flows.
+      const cardRows = sections.card_flows_daily || [], cardDates = uniq(cardRows, "DATE"), cardPanel = cardRows[0]?.PANEL;
+      const cardFlows = (sections.card_flows || []).filter(r => r.CHANNEL === "total");
+      const cardMonths = uniq(cardFlows, "MONTH"), cardMtd = new Set(cardFlows.filter(r => r.PARTIAL).map(r => r.MONTH));
       // Spend: card panel, by charge date. Already cut CARD_LAG days before the card data end, so every date is shown.
       const spendRows = sections.card_spend_daily || [], spendDates = uniq(spendRows, "DATE"), spendLast = spendDates[spendDates.length - 1] ?? "";
       const spendMonthly = spendRows.filter(r => r.DATE >= "2025-01-01").map(r => ({ ...r, MONTH: r.DATE.slice(0, 7) + "-01" }));
@@ -378,13 +383,15 @@ const BLOCKS = [
       const go = () => {
         const dsl = st.Timeline === "Days since launch", monthly = st.Timeline === "Monthly", smooth = st.Smoothing === "TR7D" && !monthly;
         const disp = st.Display, xTitle = dsl ? "Days since launch" : undefined, m = M[st.Metric], what = st.Metric.toLowerCase();
-        const spend = m === "SPEND", src = spend ? spendRows : rows, dates = spend ? spendDates : emailDates;
-        const months = spend ? spendMonths : emailMonths, mtd = spend ? spendMtd : emailMtd, panel = emailPanel;
+        const spend = m === "SPEND", card = st.Source === "Card";
+        const src = spend ? spendRows : card ? cardRows : rows, dates = spend ? spendDates : card ? cardDates : emailDates;
+        const months = spend ? spendMonths : card ? cardMonths : emailMonths, mtd = spend ? spendMtd : card ? cardMtd : emailMtd;
+        const panel = card ? cardPanel : emailPanel, unit = card ? "card accounts" : "mailboxes";
         const usd = v => "$" + fmtBig(v);
         let labels, xl, vals, dens;
         if (monthly) {
           labels = months; xl = months.map(m => m.slice(0, 7) + (mtd.has(m) ? " (MTD)" : ""));
-          vals = PROV.map(p => series(spend ? spendMonthly : flows, m, { PROVIDER: p }, months, "MONTH").map(v => v ?? 0));
+          vals = PROV.map(p => series(spend ? spendMonthly : card ? cardFlows : flows, m, { PROVIDER: p }, months, "MONTH").map(v => v ?? 0));
           if (spend) dens = PROV.map(() => months.map(k => panelMonth.get(k) ?? null));
         } else {
           const last = dates[dates.length - 1] ?? "";
@@ -408,7 +415,9 @@ const BLOCKS = [
         const msgs = [];
         if (spend && !spendRows.length) { draw("c_mshare", [], []); note.textContent = "No card spend data in this file: rebuild it with refresh_local.py."; return; }
         if (st.Smoothing === "TR7D" && monthly) msgs.push("TR7D does not apply to Monthly: monthly totals are shown.");
+        if (card && !spend && !cardRows.length) { draw("c_mshare", [], []); note.textContent = "No card flows in this file: rebuild it with refresh_local.py."; return; }
         if (spend) msgs.push(`Spend: card panel, web and Google Play billing only (Apple is not visible), to ${spendLast}.`);
+        else if (card) msgs.push(`Card: gross adds and churn from payments and lapses, web and Google Play billing only (Apple is not visible), to ${cardDates[cardDates.length - 1] ?? ""}.`);
         if (disp === "Share" && dsl) {
           draw("c_mshare", xl, [], { share: true, stacked: true, xTitle });
           note.textContent = "Share is not shown against days since launch (each provider's day 0 is a different date). Switch Display to Level or % of Panel, or Timeline to Last 90 days or Monthly.";
@@ -450,18 +459,25 @@ const BLOCKS = [
               : { type: "bar", label: NAMES[p], data: pp[i], stack: "s", borderWidth: 0, backgroundColor: fade(colorOf(p), 0.7) }), {
             stacked: !dsl, ratio: true, pctDigits: dig, offset: !dsl, skipNull: true, xTitle,
             label: c => `${c.dataset.label}: ${fmt(100 * c.parsed.y, dig + 1)}% (${fmtBig(vals[c.datasetIndex][c.dataIndex])})`,
-            footer: items => items.length && !dsl ? `All tracked providers: ${fmt(100 * tot[items[0].dataIndex], dig + 1)}% of ${fmtBig(panel)} mailboxes` : "",
+            footer: items => items.length && !dsl ? `All tracked providers: ${fmt(100 * tot[items[0].dataIndex], dig + 1)}% of ${fmtBig(panel)} ${unit}` : "",
           });
           if (dsl) msgs.push("Against days since launch, % of Panel is shown as lines, not stacked: each provider's day 0 is a different date.");
         }
         note.textContent = msgs.join(" ");
       };
       const host = b.el.querySelector(".ctlrows");
-      for (const [name, opts] of [["Metric", Object.keys(M)], ["Display", ["Level", "Share", "% of Panel"]], ["Smoothing", ["Raw", "TR7D"]],
+      // Spend is card data: disabled for E-Receipt.
+      const syncSpend = () => {
+        const sp = [...host.querySelectorAll('[aria-label="Metric"] button')].find(x => x.textContent === "Spend"), er = st.Source === "E-Receipt";
+        sp.disabled = er; sp.title = er ? "Spend is card data: switch Source to Card" : "";
+        if (er && st.Metric === "Spend") host.querySelector('[aria-label="Metric"] button').click();  // back to Gross Adds
+      };
+      for (const [name, opts] of [["Source", ["E-Receipt", "Card"]], ["Metric", Object.keys(M)], ["Display", ["Level", "Share", "% of Panel"]], ["Smoothing", ["Raw", "TR7D"]],
                                   ["Geography", ["US"]], ["Timeline", ["Last 90 days", "Days since launch", "Monthly"]]]) {
         host.insertAdjacentHTML("beforeend", `<span class="lab">${name}</span>`);
-        buttons(host, name, opts, st, go);
+        buttons(host, name, opts, st, name === "Source" ? () => { syncSpend(); go(); } : go);
       }
+      syncSpend();
       go();
   } },
   { key: "channel_flows", render(rows, sections) {
@@ -472,8 +488,9 @@ const BLOCKS = [
         "Source Card: the Omega 2022 consistent-shopper card panel; gross add = a payment with no earlier one in 40 days (385 after an annual payment); churn = lapse (no payment within 40 / 385 days), dated at the lapse. " +
         "Cards see web (Direct) and Google Play billing only, not iTunes; Card Combined = Direct + Google Play. Panel counts, unweighted. The last month is month-to-date (MTD) and rises as the month fills.");
       if (!rows.length) return empty(b, "Provider Analysis");
-      b.el.insertAdjacentHTML("beforeend", `<div class="stack">${col("c_cf_flow", "Monthly gross adds, churn and net adds")}` +
-        `${col("c_cf_mix", "Channel mix")}${col("c_cf_plan", "Plan share")}</div>`);
+      const rowsCol = (id, title) => `<div><div class="chead"><span>${esc(title)}</span></div><div class="ctlrows" id="${id}_ctl"></div><div class="chart"><canvas id="${id}"></canvas></div></div>`;
+      b.el.insertAdjacentHTML("beforeend", `<div class="stack">${rowsCol("c_cf_flow", "Monthly gross adds, churn and net adds")}` +
+        `${rowsCol("c_cf_mix", "Channel mix")}${rowsCol("c_cf_plan", "Plan share")}</div>`);
       const SRC = { "Combined": "combined", "Direct": "direct", "Google Play": "google_play", "iTunes": "itunes" };  // channels
       const CH_COLOR = { direct: 0, google_play: 1, itunes: 5 };
       // Every source on one month axis (YM = YYYY-MM), so months a source does not have yet show empty.
@@ -538,35 +555,38 @@ const BLOCKS = [
         draw("c_cf_plan", labels(card ? "Card" : "E-Receipt"), plans.map(([pl], i) => ({ type: "bar", label: PLAN_NAMES[pl] ?? pl, data: ps.View === "Share" ? shr[i] : lvl[i],
             stack: "s", borderWidth: 0, backgroundColor: alpha(pl === "Unspecified" ? css("--c5") : C[i % 6], 0.75) })), {
           stacked: true, share: ps.View === "Share", label: shareLabel(lvl, shr),
-          footer: items => items.length && pos[items[0].dataIndex] != null ? `${card ? "Active card subscribers" : "Net adds since January 2025 (positive plans)"}: ${fmtBig(pos[items[0].dataIndex])}` : "",
+          footer: items => { if (!items.length || pos[items[0].dataIndex] == null) return "";
+            const asOf = card && rs.find(r => r.PARTIAL && r.YM === months[items[0].dataIndex]);  // current month: counted at the latest card date
+            return `${card ? "Active card subscribers" + (asOf ? ` on ${asOf.MONTH}` : "") : "Net adds since January 2025 (positive plans)"}: ${fmtBig(pos[items[0].dataIndex])}`; },
         });
       };
 
-      // Controls above each chart: Provider, then Source, then the chart's own toggles.
+      // Controls above each chart, labelled as in the blocks above: Source, Channel, Provider, then the chart's own toggles.
       const ctl = id => document.getElementById(id + "_ctl");
+      const row = (host, name, opts, state, fn) => { host.insertAdjacentHTML("beforeend", `<span class="lab">${name}</span>`); buttons(host, name, opts, state, fn); };
       const flowCtl = ctl("c_cf_flow");
       const syncChannel = () => {  // cards cannot see iTunes: disabled for Card
         const it = [...flowCtl.querySelectorAll('[aria-label="Channel"] button')].find(x => x.textContent === "iTunes"), card = fs.Source === "Card";
         it.disabled = card; it.title = card ? "Cards cannot see iTunes billing" : "";
         if (card && fs.Channel === "iTunes") flowCtl.querySelector('[aria-label="Channel"] button').click();  // back to Combined
       };
-      buttons(flowCtl, "Provider", PROV, fs, flow);
-      buttons(flowCtl, "Source", ["E-Receipt", "Card"], fs, () => { syncChannel(); flow(); });
-      buttons(flowCtl, "Channel", Object.keys(SRC), fs, flow);
+      row(flowCtl, "Source", ["E-Receipt", "Card"], fs, () => { syncChannel(); flow(); });
+      row(flowCtl, "Channel", Object.keys(SRC), fs, flow);
+      row(flowCtl, "Provider", PROV, fs, flow);
       syncChannel();
-      buttons(ctl("c_cf_mix"), "Provider", PROV, ms, mix);
-      buttons(ctl("c_cf_mix"), "Source", ["E-Receipt", "Card"], ms, mix);
-      buttons(ctl("c_cf_mix"), "Metric", ["Subscribers", "Gross adds", "Churn", "Net adds"], ms, mix);
-      buttons(ctl("c_cf_mix"), "View", ["Share", "Level"], ms, mix);
-      buttons(ctl("c_cf_plan"), "Provider", PROV, ps, plan);
-      buttons(ctl("c_cf_plan"), "Source", ["E-Receipt", "Card"], ps, plan);
-      buttons(ctl("c_cf_plan"), "View", ["Share", "Level"], ps, plan);
+      row(ctl("c_cf_mix"), "Source", ["E-Receipt", "Card"], ms, mix);
+      row(ctl("c_cf_mix"), "Provider", PROV, ms, mix);
+      row(ctl("c_cf_mix"), "Metric", ["Subscribers", "Gross adds", "Churn", "Net adds"], ms, mix);
+      row(ctl("c_cf_mix"), "View", ["Share", "Level"], ms, mix);
+      row(ctl("c_cf_plan"), "Source", ["E-Receipt", "Card"], ps, plan);
+      row(ctl("c_cf_plan"), "Provider", PROV, ps, plan);
+      row(ctl("c_cf_plan"), "View", ["Share", "Level"], ps, plan);
       document.getElementById("c_cf_flow").parentElement.insertAdjacentHTML("afterend", `<p class="note" id="c_cf_flow_note"></p>`);
       document.getElementById("c_cf_mix").parentElement.insertAdjacentHTML("afterend",
         `<p class="note">E-Receipt: the provider's Combined channels. Card: Direct (web) and Google Play; cards cannot see iTunes billing. ` +
         `Subscribers = net adds summed from January 2025 (no opening stock). Share is over channels with a positive value; a negative value shows in Level only.</p>`);
       document.getElementById("c_cf_plan").parentElement.insertAdjacentHTML("afterend",
-        `<p class="note">Card: active subscribers at each month-end, web and Google Play billing only (cards cannot see iTunes); monthly and annual plans pooled. ` +
+        `<p class="note">Card: active subscribers at each month-end (the current month as of the latest card data, MTD, until its month-end can be counted), web and Google Play billing only (cards cannot see iTunes); monthly and annual plans pooled. ` +
         `E-Receipt: net adds by plan summed from January 2025 (no opening stock); plans as named in the emails (Claude Max and ChatGPT Pro are not split by price); ` +
         `Unspecified (cancellations naming no plan) and negative plans show in Level only.</p>`);
       flow(); mix(); plan();
