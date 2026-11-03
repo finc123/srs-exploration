@@ -47,6 +47,7 @@
   .ctl { display: flex; flex-wrap: wrap; gap: 6px; }
   .ctl button { border: 1px solid var(--line); background: transparent; color: var(--ink); border-radius: 6px;
                 padding: 3px 9px; font: inherit; font-size: 12px; cursor: pointer; }
+  .ctl button:disabled { opacity: 0.35; cursor: not-allowed; }
   .ctl button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
   .chart { position: relative; height: 280px; }
   .ctlrows { display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; align-items: center; margin: 0 0 12px; }
@@ -463,171 +464,144 @@ const BLOCKS = [
       }
       go();
   } },
-  { key: "channel_flows", render(rows) {
-      const b = block("Gross adds, churn and net adds from sign-up and cancellation emails (US)",
-        "Gross adds = first sign-up or paid subscription email in a series; churn = cancellation emails, counted only while the mailbox is subscribed (a sign-up since its previous cancellation, on any channel); net adds = gross adds − churn. No lapse modelling. " +
+  { key: "channel_flows", render(rows, sections) {
+      const b = block("Provider Analysis",
+        "Source E-Receipt: gross adds = first sign-up or paid subscription email in a series; churn = cancellation emails, counted only while the mailbox is subscribed (a sign-up since its previous cancellation, on any channel); net adds = gross adds − churn. " +
         "Panel: mailboxes that joined before 2023 and are still active. Combined = the sum of the provider's channels: direct + Google Play + iTunes, " +
-        "except Grok and Perplexity (Google Play + iTunes: Grok has no direct sender; Perplexity direct is mostly free promotional sign-ups). " +
-        "Grok includes X Premium+. Panel counts. The last month is month-to-date (labelled MTD) and rises as the month fills.");
-      if (!rows.length) return empty(b, "Email-based flows");
-      b.el.insertAdjacentHTML("beforeend", `<div class="stack">${col("c_cf_flow", "Monthly gross adds, churn and net adds")}${col("c_cf_cum", "Cumulative net adds since January 2025 (Combined)")}</div>`);
-      const SRC = { "Combined": "combined", "Direct": "direct", "Google Play": "google_play", "iTunes": "itunes" };
-      const st = { Provider: "chatgpt", Source: "Combined", Plan: "All plans" }, months = uniq(rows, "MONTH"), C = COLORS();
-      const mtd = new Set(rows.filter(r => r.PARTIAL).map(r => r.MONTH));
-      const xl = months.map(m => mtd.has(m) ? m.slice(0, 7) + " (MTD)" : m.slice(0, 7));
-      const planHost = document.createElement("div"); b.ctls.appendChild(planHost);
-      const plansOf = p => uniq(rows.filter(r => r.PROVIDER === p && r.CHANNEL === "combined" && r.PLAN !== "all"), "PLAN")
-        .sort((x, y) => (x === "Unspecified") - (y === "Unspecified"));
+        "except Grok and Perplexity (Google Play + iTunes: Grok has no direct sender; Perplexity direct is mostly free promotional sign-ups). Grok includes X Premium+. " +
+        "Source Card: the Omega 2022 consistent-shopper card panel; gross add = a payment with no earlier one in 40 days (385 after an annual payment); churn = lapse (no payment within 40 / 385 days), dated at the lapse. " +
+        "Cards see web (Direct) and Google Play billing only, not iTunes; Card Combined = Direct + Google Play. Panel counts, unweighted. The last month is month-to-date (MTD) and rises as the month fills.");
+      if (!rows.length) return empty(b, "Provider Analysis");
+      b.el.insertAdjacentHTML("beforeend", `<div class="stack">${col("c_cf_flow", "Monthly gross adds, churn and net adds")}` +
+        `${col("c_cf_mix", "Channel mix")}${col("c_cf_plan", "Plan share")}</div>`);
+      const SRC = { "Combined": "combined", "Direct": "direct", "Google Play": "google_play", "iTunes": "itunes" };  // channels
+      const CH_COLOR = { direct: 0, google_play: 1, itunes: 5 };
+      // Every source on one month axis (YM = YYYY-MM), so months a source does not have yet show empty.
+      const ym = rs => rs.map(r => ({ ...r, YM: r.MONTH.slice(0, 7) }));
+      const SECT = { "E-Receipt": ym(rows.filter(r => r.PLAN === "all")), "Card": ym(sections.card_flows || []) };
+      const PLANS = { "E-Receipt": ym(sections.email_plans || []), "Card": ym(sections.card_plans || []) };
+      const months = [...new Set([...Object.values(SECT), ...Object.values(PLANS)].flatMap(rs => rs.map(r => r.YM)))].sort();
+      const labels = src => { const mtd = new Set(SECT[src].filter(r => r.PARTIAL).map(r => r.YM)); return months.map(m => mtd.has(m) ? m + " (MTD)" : m); };
+      const C = COLORS();
       const cum = s => { let t = 0; return s.map(v => v == null ? null : (t += v)); };
-      const go = () => {
-        const byPlan = st.Plan !== "All plans", ch = byPlan ? "combined" : SRC[st.Source];
-        const w = { PROVIDER: st.Provider, CHANNEL: ch, PLAN: byPlan ? st.Plan : "all" };
-        const has = rows.some(r => r.PROVIDER === st.Provider && r.CHANNEL === ch && r.PLAN === w.PLAN);
-        const neg = s => s.map(v => v == null ? null : -v);
+      const neg = s => s.map(v => v == null ? null : -v);
+      const shareLabel = (lvl, shr) => x => `${x.dataset.label}: ${fmtBig(lvl[x.datasetIndex][x.dataIndex])}` +
+        (shr[x.datasetIndex][x.dataIndex] == null ? "" : ` (${fmt(100 * shr[x.datasetIndex][x.dataIndex], 1)}%)`);
+      // Each chart has its own Provider and Source.
+      const fs = { Provider: "chatgpt", Source: "E-Receipt", Channel: "Combined" };
+      const ms = { Provider: "chatgpt", Source: "E-Receipt", Metric: "Subscribers", View: "Share" };
+      const ps = { Provider: "chatgpt", Source: "Card", View: "Share" };
+
+      const flow = () => {
+        const card = fs.Source === "Card", ch = card && fs.Channel === "Combined" ? "total" : SRC[fs.Channel];
+        const rs = SECT[fs.Source], w = { PROVIDER: fs.Provider, CHANNEL: ch };
+        const has = rs.some(r => r.PROVIDER === w.PROVIDER && r.CHANNEL === w.CHANNEL);
         const sets = !has ? [] : [
-          { ...bar("Gross adds", series(rows, "GROSS_ADDS", w, months, "MONTH"), C[2]), label: "Gross adds", stack: "d" },
-          ...(byPlan ? [{ ...bar("Switched in", series(rows, "SWITCH_IN", w, months, "MONTH"), C[5]), label: "Switched in", stack: "d" }] : []),
-          { ...bar("Churn", neg(series(rows, "CHURN", w, months, "MONTH")), C[3]), label: "Churn", stack: "d" },
-          ...(byPlan ? [{ ...bar("Switched out", neg(series(rows, "SWITCH_OUT", w, months, "MONTH")), C[4]), label: "Switched out", stack: "d" }] : []),
-          line("Net adds", series(rows, "NET_ADDS", w, months, "MONTH"), css("--ink"), 2.5),
+          { ...bar("Gross adds", series(rs, "GROSS_ADDS", w, months, "YM"), C[2]), label: "Gross adds", stack: "d" },
+          { ...bar("Churn", neg(series(rs, "CHURN", w, months, "YM")), C[3]), label: "Churn", stack: "d" },
+          line("Net adds", series(rs, "NET_ADDS", w, months, "YM"), css("--ink"), 2.5),
         ];
-        draw("c_cf_flow", xl, sets, { stacked: true, label: c => `${c.dataset.label}: ${fmtBig(c.dataset.type === "bar" ? Math.abs(c.parsed.y) : c.parsed.y)}` });
-        const inc = rows.find(r => r.PROVIDER === st.Provider && r.CHANNEL === ch);
-        document.getElementById("c_cf_flow_note").textContent = !has ? `${NAMES[st.Provider]} has no ${st.Source} sender.`
-          : byPlan && st.Source !== "Combined" ? "Plans are shown for the Combined series only."
-          : !inc.IN_COMBINED ? `${st.Source} is shown for reference but is not part of ${NAMES[st.Provider]} Combined.` : "";
-        if (byPlan) {
-          draw("c_cf_cum", xl, plansOf(st.Provider).map((pl, i) =>
-            line(pl, cum(series(rows, "NET_ADDS", { PROVIDER: st.Provider, CHANNEL: "combined", PLAN: pl }, months, "MONTH")), C[i % 6], pl === st.Plan ? 3 : 1.5)));
-          document.querySelector("#c_cf_cum").closest("div").previousElementSibling.querySelector("span").textContent = `Cumulative net adds since January 2025 by plan (${NAMES[st.Provider]}, Combined)`;
-        } else {
-          draw("c_cf_cum", xl, PROV.filter(p => rows.some(r => r.PROVIDER === p)).map(p =>
-            line(NAMES[p], cum(series(rows, "NET_ADDS", { PROVIDER: p, CHANNEL: "combined", PLAN: "all" }, months, "MONTH")), colorOf(p), p === st.Provider ? 3 : 1.5)));
-          document.querySelector("#c_cf_cum").closest("div").previousElementSibling.querySelector("span").textContent = "Cumulative net adds since January 2025 (Combined)";
-        }
+        draw("c_cf_flow", labels(fs.Source), sets, { stacked: true, label: c => `${c.dataset.label}: ${fmtBig(c.dataset.type === "bar" ? Math.abs(c.parsed.y) : c.parsed.y)}` });
+        const inc = rs.find(r => r.PROVIDER === w.PROVIDER && r.CHANNEL === w.CHANNEL);
+        const extra = !has ? (card ? `${NAMES[fs.Provider]} has no card data.` : `${NAMES[fs.Provider]} has no ${fs.Channel} sender.`)
+          : !card && !inc.IN_COMBINED ? `${fs.Channel} is shown for reference but is not part of ${NAMES[fs.Provider]} Combined.` : "";
+        document.getElementById("c_cf_flow_note").textContent = "Cards cannot see iTunes billing; Card Combined = Direct + Google Play." + (extra ? " " + extra : "");
       };
-      const planButtons = () => { planHost.innerHTML = ""; if (!plansOf(st.Provider).includes(st.Plan)) st.Plan = "All plans";
-        if (plansOf(st.Provider).length) buttons(planHost, "Plan", ["All plans", ...plansOf(st.Provider)], st, go); };  // no plan rows: provider level only
-      buttons(b.ctls, "Provider", PROV, st, () => { planButtons(); go(); });
-      b.ctls.appendChild(planHost); planButtons();
-      buttons(document.getElementById("c_cf_flow_ctl"), "Source", Object.keys(SRC), st, go);
+
+      // Channel mix: each channel's share of the provider's gross adds, churn, net adds or subscribers (net adds summed from January 2025).
+      const mix = () => {
+        const rs = SECT[ms.Source], card = ms.Source === "Card";
+        const chans = Object.keys(SRC).filter(k => k !== "Combined" && rs.some(r => r.PROVIDER === ms.Provider && r.CHANNEL === SRC[k] && (card || r.IN_COMBINED)));
+        const col_ = { "Gross adds": "GROSS_ADDS", "Churn": "CHURN", "Net adds": "NET_ADDS", "Subscribers": "NET_ADDS" }[ms.Metric];
+        const lvl = chans.map(k => { const s = series(rs, col_, { PROVIDER: ms.Provider, CHANNEL: SRC[k] }, months, "YM");
+          return ms.Metric === "Subscribers" ? cum(s) : s; });
+        const pos = months.map((_, j) => lvl.every(s => s[j] == null) ? null : sum(lvl.map(s => Math.max(0, s[j] ?? 0))));
+        const shr = lvl.map(s => s.map((v, j) => pos[j] && v != null ? Math.max(0, v) / pos[j] : null));
+        draw("c_cf_mix", labels(ms.Source), chans.map((k, i) => ({ type: "bar", label: k, data: ms.View === "Share" ? shr[i] : lvl[i], stack: "s", borderWidth: 0,
+                                                                   backgroundColor: alpha(C[CH_COLOR[SRC[k]]], 0.75) })),
+             { stacked: true, share: ms.View === "Share", label: shareLabel(lvl, shr) });
+      };
+
+      // Plan share. Card: active subscribers at each month-end by plan. E-Receipt: net adds by plan summed from January 2025.
+      const PLAN_NAMES = { go: "Go", plus: "Plus", pro100: "Pro $100", pro200: "Pro $200", pro500: "Pro $500", pro: "Pro", max5: "Max 5x", max20: "Max 20x",
+        ai_plus: "AI Plus", ai_plus_2tb: "AI Plus (2 TB)", ai_pro: "AI Pro", ultra: "AI Ultra", ultra_5x: "AI Ultra (5x)", supergrok: "SuperGrok",
+        heavy: "SuperGrok Heavy", lite: "SuperGrok Lite", premium_plus: "X Premium+", xsub_plus: "X Sub Plus", xsub_premium: "X Sub Premium",
+        xsub_super: "X Sub Super", xsub_ultra: "X Sub Ultra", max: "Max", pro_disc: "Pro (discounted)", power: "Power", maximum: "Maximum" };
+      const plan = () => {
+        const card = ps.Source === "Card", rs = PLANS[ps.Source].filter(r => r.PROVIDER === ps.Provider), v = card ? "SUBSCRIBERS" : "NET_ADDS";
+        const lvlOf = pl => { const s = series(rs, v, { PLAN: pl }, months, "YM"); return card ? s : cum(s); };
+        const plans = uniq(rs, "PLAN").map(pl => [pl, lvlOf(pl)]).sort((a, z) => (a[0] === "Unspecified") - (z[0] === "Unspecified") ||
+          (z[1].filter(x => x != null).at(-1) ?? 0) - (a[1].filter(x => x != null).at(-1) ?? 0));
+        const lvl = plans.map(x => x[1]), counted = plans.map(([pl]) => pl !== "Unspecified");
+        const pos = months.map((_, j) => lvl.every(s => s[j] == null) ? null : sum(lvl.map((s, i) => counted[i] ? Math.max(0, s[j] ?? 0) : 0)));
+        const shr = lvl.map((s, i) => s.map((x, j) => !counted[i] || !pos[j] || x == null ? null : Math.max(0, x) / pos[j]));
+        draw("c_cf_plan", labels(card ? "Card" : "E-Receipt"), plans.map(([pl], i) => ({ type: "bar", label: PLAN_NAMES[pl] ?? pl, data: ps.View === "Share" ? shr[i] : lvl[i],
+            stack: "s", borderWidth: 0, backgroundColor: alpha(pl === "Unspecified" ? css("--c5") : C[i % 6], 0.75) })), {
+          stacked: true, share: ps.View === "Share", label: shareLabel(lvl, shr),
+          footer: items => items.length && pos[items[0].dataIndex] != null ? `${card ? "Active card subscribers" : "Net adds since January 2025 (positive plans)"}: ${fmtBig(pos[items[0].dataIndex])}` : "",
+        });
+      };
+
+      // Controls above each chart: Provider, then Source, then the chart's own toggles.
+      const ctl = id => document.getElementById(id + "_ctl");
+      const flowCtl = ctl("c_cf_flow");
+      const syncChannel = () => {  // cards cannot see iTunes: disabled for Card
+        const it = [...flowCtl.querySelectorAll('[aria-label="Channel"] button')].find(x => x.textContent === "iTunes"), card = fs.Source === "Card";
+        it.disabled = card; it.title = card ? "Cards cannot see iTunes billing" : "";
+        if (card && fs.Channel === "iTunes") flowCtl.querySelector('[aria-label="Channel"] button').click();  // back to Combined
+      };
+      buttons(flowCtl, "Provider", PROV, fs, flow);
+      buttons(flowCtl, "Source", ["E-Receipt", "Card"], fs, () => { syncChannel(); flow(); });
+      buttons(flowCtl, "Channel", Object.keys(SRC), fs, flow);
+      syncChannel();
+      buttons(ctl("c_cf_mix"), "Provider", PROV, ms, mix);
+      buttons(ctl("c_cf_mix"), "Source", ["E-Receipt", "Card"], ms, mix);
+      buttons(ctl("c_cf_mix"), "Metric", ["Subscribers", "Gross adds", "Churn", "Net adds"], ms, mix);
+      buttons(ctl("c_cf_mix"), "View", ["Share", "Level"], ms, mix);
+      buttons(ctl("c_cf_plan"), "Provider", PROV, ps, plan);
+      buttons(ctl("c_cf_plan"), "Source", ["E-Receipt", "Card"], ps, plan);
+      buttons(ctl("c_cf_plan"), "View", ["Share", "Level"], ps, plan);
       document.getElementById("c_cf_flow").parentElement.insertAdjacentHTML("afterend", `<p class="note" id="c_cf_flow_note"></p>`);
-      go();
+      document.getElementById("c_cf_mix").parentElement.insertAdjacentHTML("afterend",
+        `<p class="note">E-Receipt: the provider's Combined channels. Card: Direct (web) and Google Play; cards cannot see iTunes billing. ` +
+        `Subscribers = net adds summed from January 2025 (no opening stock). Share is over channels with a positive value; a negative value shows in Level only.</p>`);
+      document.getElementById("c_cf_plan").parentElement.insertAdjacentHTML("afterend",
+        `<p class="note">Card: active subscribers at each month-end, web and Google Play billing only (cards cannot see iTunes); monthly and annual plans pooled. ` +
+        `E-Receipt: net adds by plan summed from January 2025 (no opening stock); plans as named in the emails (Claude Max and ChatGPT Pro are not split by price); ` +
+        `Unspecified (cancellations naming no plan) and negative plans show in Level only.</p>`);
+      flow(); mix(); plan();
   } },
-  { key: "channel_flows", render(rows) {
-      const b = block("Share across providers: subscribers, gross adds and net adds (US, emails)",
-        "Metric: Subscribers = each provider's Combined net adds summed from January 2025, with no opening stock (subscribers added since then, not total subscribers); " +
-        "Gross adds and Net adds = that month's Combined figures. Share = a provider's value over the sum across providers that month. " +
-        "For Subscribers and Net adds, share is taken over providers with a positive value: a negative value (e.g. Grok, whose store cancellation emails include free-trial cancellations) shows in Level but not in Share. " +
-        "The last month is month-to-date (MTD).");
-      const rs = rows.filter(r => r.CHANNEL === "combined" && r.PLAN === "all");
-      if (!rs.length) return empty(b, "Subscribers");
-      b.el.insertAdjacentHTML("beforeend", `<div class="chart" style="height:320px"><canvas id="c_subs"></canvas></div>`);
-      const st = { Metric: "Subscribers", View: "Share" }, months = uniq(rs, "MONTH"), mtd = new Set(rs.filter(r => r.PARTIAL).map(r => r.MONTH));
-      const xl = months.map(m => mtd.has(m) ? m.slice(0, 7) + " (MTD)" : m.slice(0, 7));
-      const cum = s => { let t = 0; return s.map(v => (t += v ?? 0)); };
-      const go = () => {
-        const provs = PROV.filter(p => rs.some(r => r.PROVIDER === p));
-        const raw = p => series(rs, st.Metric === "Gross adds" ? "GROSS_ADDS" : "NET_ADDS", { PROVIDER: p }, months, "MONTH");
-        const lvl = provs.map(p => st.Metric === "Subscribers" ? cum(raw(p)) : raw(p).map(v => v ?? 0));
-        const pos = months.map((_, j) => sum(lvl.map(s => Math.max(0, s[j]))));
-        const shr = lvl.map(s => s.map((v, j) => pos[j] ? Math.max(0, v) / pos[j] : null));
-        draw("c_subs", xl, provs.map((p, i) => ({ type: "bar", label: NAMES[p], data: st.View === "Share" ? shr[i] : lvl[i], stack: "s", borderWidth: 0,
-                                                   backgroundColor: alpha(colorOf(p), 0.7) })), {
-          stacked: true, share: st.View === "Share",
-          label: x => `${x.dataset.label}: ${fmtBig(lvl[x.datasetIndex][x.dataIndex])}` + (shr[x.datasetIndex][x.dataIndex] == null ? "" : ` (${fmt(100 * shr[x.datasetIndex][x.dataIndex], 1)}%)`),
-          footer: items => items.length ? `Total${st.Metric === "Gross adds" ? "" : " (providers with a positive value)"}: ${fmtBig(pos[items[0].dataIndex])}` : "",
-        });
+  { key: "switching", render(rows) {
+      const b = block("Switching Heatmap",
+        "Where churners subscribe next. Rows: mailboxes that cancelled a provider in the month, counted only while subscribed (an observed gross add before the cancellation). " +
+        "Columns: the share of them with a gross add (e-receipt Combined channels) to each provider within the chosen days after cancelling — the same provider on a later day is a return — or to none. " +
+        "A churner counts under every provider they join, so a row can sum to more than 100%. A month shows once its window has passed the data end. Panel counts; small rows are noisy (hover for counts).");
+      if (!rows.length) return empty(b, "Switching");
+      b.el.insertAdjacentHTML("beforeend", `<div class="ctlrows" id="c_sw_ctl"></div><div class="scroll" id="c_sw"></div>`);
+      const st = { Days: "30 days", Month: null };
+      const monthName = m => new Date(m + "T00:00:00Z").toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+      const host = document.getElementById("c_sw_ctl"), cols = [...PROV, "none"];
+      const grid = () => {
+        const days = parseInt(st.Days), rs = rows.filter(r => r.DAYS === days && monthName(r.MONTH) === st.Month);
+        const from = PROV.filter(p => rs.some(r => r.FROM === p)), acc = css("--accent");
+        const cell = (p, q) => { const r = rs.find(x => x.FROM === p && x.TO === q), n = r?.MAILBOXES ?? 0, N = rs.find(x => x.FROM === p)?.CHURNERS ?? 0;
+          const s = N ? n / N : 0, a = Math.sqrt(s) * 0.9;
+          return `<td title="${esc(NAMES[p])} → ${q === "none" ? "none" : esc(NAMES[q])}: ${fmt(n)} of ${fmt(N)} churners" ` +
+                 `style="text-align:center;background:${alpha(acc, a)};color:${a > 0.5 ? "#fff" : "var(--ink)"}">${fmt(100 * s, 1)}%</td>`; };
+        document.getElementById("c_sw").innerHTML = !from.length ? `<p class="empty">No churners in this month.</p>` :
+          `<table><tr><th>Churned from ↓ / joined →</th>${cols.map(q => `<th style="text-align:center">${q === "none" ? "None" : esc(NAMES[q])}</th>`).join("")}<th style="text-align:right">Churners</th></tr>` +
+          from.map(p => `<tr><th>${esc(NAMES[p])}</th>${cols.map(q => cell(p, q)).join("")}<td style="text-align:right">${fmt(rs.find(x => x.FROM === p).CHURNERS)}</td></tr>`).join("") + `</table>`;
       };
-      buttons(b.ctls, "Metric", ["Subscribers", "Gross adds", "Net adds"], st, go);
-      buttons(b.ctls, "View", ["Share", "Level"], st, go); go();
-  } },
-  { key: "channel_flows", render(rows) {
-      if (!rows.some(r => r.CHANNEL === "combined" && r.PLAN !== "all")) return;  // plan split not exported (provider level only)
-      const b = block("Plan mix: net subscribers added since January 2025 by plan (US, emails)",
-        "Combined net adds by plan (gross adds + switches in − cancellations − switches out) summed from January 2025, for one provider. " +
-        "Share is over plans with a positive total; Unspecified (cancellations that name no plan, with no earlier email) and any negative plan show in Level only. The last month is month-to-date.");
-      const rs = rows.filter(r => r.CHANNEL === "combined" && r.PLAN !== "all");
-      if (!rs.length) return empty(b, "Plan mix");
-      b.el.insertAdjacentHTML("beforeend", `<div class="chart" style="height:300px"><canvas id="c_plan"></canvas></div>`);
-      const st = { Provider: "chatgpt", View: "Share" }, months = uniq(rs, "MONTH"), C = COLORS(), mtd = new Set(rs.filter(r => r.PARTIAL).map(r => r.MONTH));
-      const xl = months.map(m => mtd.has(m) ? m.slice(0, 7) + " (MTD)" : m.slice(0, 7));
-      const cum = s => { let t = 0; return s.map(v => (t += v ?? 0)); };
-      const go = () => {
-        const plans = uniq(rs.filter(r => r.PROVIDER === st.Provider), "PLAN").sort((x, y) => (x === "Unspecified") - (y === "Unspecified"));
-        const lvl = plans.map(pl => cum(series(rs, "NET_ADDS", { PROVIDER: st.Provider, PLAN: pl }, months, "MONTH")));
-        const pos = months.map((_, j) => sum(lvl.map((s, i) => plans[i] === "Unspecified" ? 0 : Math.max(0, s[j]))));
-        const shr = lvl.map((s, i) => s.map((v, j) => plans[i] === "Unspecified" || !pos[j] ? null : Math.max(0, v) / pos[j]));
-        draw("c_plan", xl, plans.map((pl, i) => ({ type: "bar", label: pl, data: st.View === "Share" ? shr[i] : lvl[i], stack: "s", borderWidth: 0,
-                                                    backgroundColor: alpha(pl === "Unspecified" ? css("--c5") : C[i % 6], 0.75) })), {
-          stacked: true, share: st.View === "Share",
-          label: x => `${x.dataset.label}: ${fmtBig(lvl[x.datasetIndex][x.dataIndex])}` + (shr[x.datasetIndex][x.dataIndex] == null ? "" : ` (${fmt(100 * shr[x.datasetIndex][x.dataIndex], 1)}%)`),
-        });
-      };
-      buttons(b.ctls, "Provider", PROV, st, go); buttons(b.ctls, "View", ["Share", "Level"], st, go); go();
-  } },
-  { key: "app_launch", render(rows) {
-      const b = block("App launch benchmark: downloads and DAU by day since launch",
-        "SensorTower downloads and DAU from each app's day 0 (first day with downloads; Muse: public launch 2026-09-08). " +
-        "Retention proxy = DAU / cumulative downloads on the same day: not cohort retention, but comparable across apps at the same day since launch. Use Log scale to compare small and large launches.");
-      b.el.insertAdjacentHTML("beforeend", `<div class="chart" style="height:340px"><canvas id="c_bench"></canvas></div>`);
-      const st = { Country: "US", Metric: "Cumulative downloads", Scale: "Log" };
-      const M = { "Cumulative downloads": "CUM_DOWNLOADS", "Downloads TR7D": "DOWNLOADS_TR7D", "DAU": "DAU", "Retention proxy": "RETENTION" };
-      const go = () => {
-        const rs = rows.filter(r => r.COUNTRY === st.Country), log = st.Scale === "Log", m = M[st.Metric];
-        const labels = Array.from({ length: Math.max(0, ...rs.map(r => r.DAY_N)) + 1 }, (_, i) => i);
-        draw("c_bench", labels, APPS.filter(a => rs.some(r => r.APP === a)).map(a => {
-          const data = labels.map(() => null);
-          for (const r of rs) if (r.APP === a && r[m] != null && (!log || r[m] > 0)) data[r.DAY_N] = r[m];
-          return { ...line(a, data, colorOf(a), a === "Muse" ? 3.5 : 1.5), spanGaps: true, order: a === "Muse" ? 0 : 1 };
-        }), { log, ratio: m === "RETENTION", xTitle: "Days since launch" });
-      };
-      buttons(b.ctls, "Country", ["US", "WW"], st, go); buttons(b.ctls, "Metric", Object.keys(M), st, go);
-      buttons(b.ctls, "Scale", ["Linear", "Log"], st, go); go();
-  } },
-  { key: "time_spent", render(rows) {
-      const b = block("Engagement: app time spent (SensorTower)",
-        "Minutes per session = minutes / sessions; minutes per DAU = minutes / daily active users. Lines are 7-day ratios (7-day minutes over 7-day sessions or DAU). " +
-        "Time-spent data arrives about a week after DAU, so the last-90-days view ends earlier than the daily charts.");
-      b.el.insertAdjacentHTML("beforeend", `<div class="chart" style="height:320px"><canvas id="c_time"></canvas></div>`);
-      const st = { Country: "US", Metric: "Minutes per DAU", View: "Last 90 days" };
-      const M = { "Minutes per session": "MIN_PER_SESSION", "Minutes per DAU": "MIN_PER_DAU" };
-      const go = () => {
-        const m = M[st.Metric], launch = st.View === "Days since launch";
-        const rs = rows.filter(r => r.COUNTRY === st.Country && r.BENCH_WINDOW === (launch ? "launch" : "recent"));
-        const labels = launch ? Array.from({ length: Math.max(0, ...rs.map(r => r.DAY_N)) + 1 }, (_, i) => i)
-                              : uniq(rs, "DATE").slice(-90);
-        const at = new Map(labels.map((l, i) => [l, i]));
-        draw("c_time", labels, APPS.filter(a => rs.some(r => r.APP === a && r[m + "_TR7D"] != null)).map(a => {
-          const data = labels.map(() => null);
-          for (const r of rs) if (r.APP === a) { const i = at.get(launch ? r.DAY_N : r.DATE); if (i != null) data[i] = r[m + "_TR7D"]; }
-          return line(a, data, colorOf(a), a === "Muse" ? 3.5 : 1.5);
-        }), { skipNull: true, xTitle: launch ? "Days since launch" : undefined, label: c => `${c.dataset.label}: ${fmt(c.parsed.y, 1, 1)} min (TR7D)` });
-      };
-      buttons(b.ctls, "Country", ["US", "WW"], st, go); buttons(b.ctls, "Metric", Object.keys(M), st, go);
-      buttons(b.ctls, "View", ["Last 90 days", "Days since launch"], st, go); go();
-  } },
-  { key: "web_traffic_daily", render(rows) {
-      const b = block("Web traffic (SimilarWeb)",
-        "Daily visits to each provider's web app (desktop + mobile web, subdomains included) and, where SimilarWeb has visit duration, 7-day minutes per visit. " +
-        "Visit duration exists for muse.ai, and for chatgpt.com and claude.ai from 2026-10-12. Muse starts at launch.");
-      b.el.insertAdjacentHTML("beforeend", `<div class="stack">${col("c_web", "Visits")}${col("c_webmin", "Minutes per visit (TR7D)")}</div>`);
-      const st = { Country: "WW", View: "Lines", Range: "All" };
-      const go = () => {
-        const dates = range(st.Range), apps = APPS.filter(a => rows.some(r => r.APP === a));
-        if (st.View === "Lines") draw("c_web", dates, apps.map(a => line(a, series(rows, "VISITS_TR7D", { APP: a, COUNTRY: st.Country }, dates), colorOf(a), a === "Muse" ? 3 : 1.5)), { offset: true, log: true });
-        else {
-          const raw = apps.map(a => series(rows, "VISITS_TR7D", { APP: a, COUNTRY: st.Country }, dates));
-          const tot = dates.map((_, j) => raw.every(s => s[j] != null || apps[raw.indexOf(s)] === "Muse") ? sum(raw.map(s => s[j])) : null);
-          draw("c_web", dates, apps.map((a, i) => ({ type: "bar", label: a, stack: "s", borderWidth: 0, backgroundColor: alpha(colorOf(a), 0.7),
-                                                     data: raw[i].map((v, j) => tot[j] ? (v ?? 0) / tot[j] : null) })), { stacked: true, share: true });
+      const controls = () => {
+        const months = uniq(rows.filter(r => r.DAYS === parseInt(st.Days)), "MONTH").map(monthName);
+        if (!months.includes(st.Month)) st.Month = months[months.length - 1];
+        host.innerHTML = "";
+        for (const [name, opts, fn] of [["Days", ["14 days", "30 days"], () => { controls(); grid(); }], ["Month", months, grid]]) {
+          host.insertAdjacentHTML("beforeend", `<span class="lab">${name === "Days" ? "Days after churn" : name}</span>`);
+          buttons(host, name, opts, st, fn);
         }
-        const withMin = apps.filter(a => rows.some(r => r.APP === a && r.COUNTRY === st.Country && r.MIN_PER_VISIT_TR7D != null));
-        draw("c_webmin", dates, withMin.map(a => line(a, series(rows, "MIN_PER_VISIT_TR7D", { APP: a, COUNTRY: st.Country }, dates), colorOf(a))),
-             { skipNull: true, offset: true, label: c => `${c.dataset.label}: ${fmt(c.parsed.y, 1, 1)} min per visit` });
       };
-      buttons(b.ctls, "Country", ["WW", "US"], st, go); buttons(b.ctls, "View", ["Lines", "Share"], st, go);
-      buttons(b.ctls, "Range", ["All", "Last 90 days"], st, go); go();
+      controls(); grid();
   } },
 ];
 
@@ -669,7 +643,9 @@ load().then(p => {
     catch (e) { document.getElementById("blocks").insertAdjacentHTML("beforeend", `<p class="err">${esc(b.key)}: ${esc(e.message)}</p>`); }
   }
   renderCoverage(p.providers || []);
-  renderMethodology(p.methodology);
+  // Methodology for what the page shows: block sections, tile sections and sections blocks read directly.
+  const shown = new Set([...BLOCKS.map(b => b.key), ...p.summary.map(s => s.SECTION), "app_launch", "card_spend_daily", "card_flows", "card_plans", "email_plans"]);
+  renderMethodology(p.methodology.filter(m => shown.has(m.KEY)));
 }).catch(e => { document.getElementById("blocks").innerHTML = `<p class="err">${esc(e.message)}</p>`; });
 </script>
 </body>

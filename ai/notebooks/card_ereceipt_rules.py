@@ -16,6 +16,8 @@ card_payments() -> kept subscription payments (one row per payment) with provide
 card_monthly()  -> gross adds / churn / net adds per provider x channel x month (40-day rule, 385 after an annual payment)
 card_spend_daily() -> kept AI-plan spend and paying accounts per provider x day (app Provider Market Share 'Spend',
                    built by ../app/refresh_local.py; includes Muse)
+app_card_flows() -> card_monthly() for the app's Provider Analysis 'Source' (from 2025-01, six providers, latest data)
+app_card_plans() -> active card subscribers per provider x plan at each month-end (app plan share)
 panel_spend_daily() -> total panel spend at tagged merchants per day (Spend '% of Panel' denominator), cached
 receipt_monthly() -> the same from e-receipts (first email in a series; cancellations only while subscribed)
 yipit()         -> Yipit US Subscriber Behavior: gross adds (New + Re-Signup + Upgrade), churn, net adds
@@ -251,6 +253,53 @@ def card_spend_daily(pay: pd.DataFrame, end: pd.Timestamp) -> pd.DataFrame:
     d = pay[pay.dt <= last]
     out = d.groupby(["provider", "dt"]).agg(spend=("amount", "sum"), accounts=("uid", "nunique")).reset_index()
     return out.rename(columns={"dt": "date"})
+
+
+APP_START = "2025-01"  # first month on the app
+
+
+def _app_months(end: pd.Timestamp) -> tuple[pd.PeriodIndex, pd.Period | None]:
+    """App months through the month of end - CARD_LAG, and that month if it is partial (still filling)."""
+    last = end - pd.Timedelta(days=CARD_LAG)
+    return pd.period_range(APP_START, last.to_period("M"), freq="M"), None if last.is_month_end else last.to_period("M")
+
+
+def app_card_flows(pay: pd.DataFrame, end: pd.Timestamp) -> pd.DataFrame:
+    """card_monthly() on the app's months and providers: gross adds, churn and net adds per provider x channel (direct,
+    google_play and 'total' = their sum; cards cannot see iTunes) x month. Adds after end - CARD_LAG are dropped; churn
+    is already dated only once it is observable. partial = the last month is still filling."""
+    months, partial = _app_months(end)
+    s = card_spells(pay, end)
+    s = s[s.start <= end - pd.Timedelta(days=CARD_LAG)]
+    key = ["provider", "channel", "month"]
+    a = s.assign(month=s.start.dt.to_period("M")).groupby(key).uid.nunique()
+    c = s.dropna(subset=["churn_dt"])
+    c = c.assign(month=c.churn_dt.dt.to_period("M")).groupby(key).uid.nunique()
+    idx = pd.MultiIndex.from_product([sorted(pay.provider.unique()), ["direct", "google_play"], months], names=key)
+    t = pd.DataFrame({"gross_adds": a, "churn": c}).reindex(idx).fillna(0).astype(int)
+    tot = t.groupby(level=["provider", "month"]).sum().assign(channel="total").set_index("channel", append=True)
+    t = pd.concat([t, tot.reorder_levels(key)]).sort_index().reset_index()
+    t["net_adds"] = t.gross_adds - t.churn
+    t["partial"] = t.month == partial
+    return t
+
+
+def app_card_plans(pay: pd.DataFrame, end: pd.Timestamp) -> pd.DataFrame:
+    """Active card subscribers per provider x plan at each month-end from APP_START: accounts whose latest payment on
+    or before the month-end (per provider x channel) is under CUTOFF days old (CUTOFF_ANNUAL after an annual payment),
+    the same rule that ends a card_spells() spell. Plan = that payment's tier (monthly and annual pooled); an account
+    counts once per provider x plan. Month-ends after end - CARD_LAG are left out (payments still posting)."""
+    last = end - pd.Timedelta(days=CARD_LAG)
+    p = pay[pay.plan.notna()].assign(tier=lambda d: d.plan.str.replace(r"_[MA]$", "", regex=True))
+    out = []
+    for me in _app_months(end)[0].to_timestamp(how="end").normalize():
+        if me > last:
+            continue
+        x = p[(p.dt <= me) & (p.dt > me - pd.Timedelta(days=CUTOFF_ANNUAL))]
+        x = x.sort_values(["dt", "cadence"]).drop_duplicates(["uid", "provider", "channel"], keep="last")
+        x = x[(me - x.dt).dt.days < np.where(x.cadence.eq("A"), CUTOFF_ANNUAL, CUTOFF)]
+        out.append(x.groupby(["provider", "tier"]).uid.nunique().rename("subscribers").reset_index().assign(month=me))
+    return pd.concat(out, ignore_index=True)
 
 
 # ---- e-receipt rules (ported from _make_direct_v_channel.py) ---------------------------------------------------------

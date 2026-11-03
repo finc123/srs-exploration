@@ -1,0 +1,10 @@
+1. Rename the 'Gross adds, churn and net adds from sign-up and cancellation emails (US)' to 'Provider Analysis'.
+2. Remove the cumulative net adds section from the 'Provider Analysis' section. 
+3. Add the following analyses under the 'Provider Analysis' section, below 'Monthly gross adds, churn and net adds': 
+	a. Channel Mix, which uses the e-receipt data to show, for a given provider, the % of gross adds, churn, net adds, and subscribers (cumulative net adds since January 2025) belonging to each channel.
+	b.Plan share analysis, which shows, using the credit card data and the filters we determined should be used, the % of each provider's subscriber base subscribing to each plan. For example, I would look at this chart to answer the question -- 'What % of ChatGPT's paid subscriptions are for their Go Plan?'
+	c. Add to 'monthly gross adds, churn, and net adds' chart for 'Source' -- we should also display the trends using the card data. Here, we should use the same panelisation as we did previously with the card data, and gross adds/cancellations should be inferred from lapse. The general standard should be taken from 'exploration/ai/card_ereceipt_comparison.ipynb'.
+4. Add a 'Switching Heatmap' section. It should show a grid of each provider on both axis. It should show shading as % of churners (higher percent, the darker) showing where users go 30 days after churning. So for example, in September, we would look at all of the Claude subscribers who cancelled, restrict to those for whom we observed a gross add email (i.e., we would consider them subscribers if not for the cancellation email), and then we count whether we observed a gross add to Claude, ChatGPT, Gemini, Grok, Perplexity Muse, or nobody within the next 30 days. Doing this for each churner across each provider will allow us to e.g., answer the question: what % of churners went from Claude to Grok?
+5. Remove all of the sections below 'Provider Analysis' -- these were old sections.
+
+	
