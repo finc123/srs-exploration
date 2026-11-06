@@ -12,9 +12,13 @@ gross-up of months >= 21 days past month-end, partial quarters at quarter-to-dat
 4-quarter capture rate, y/y vs reported). The range scales each ready month by its monthly bounds.
 A quarter gets no estimate until one of its months is 21 days past month-end.
 
+Hiring: Zillow mortgage job postings per month (Revelio Indeed), charted only on the first weekly
+run after a new Revelio load (BATCH_ID within HIRING_NEW_DAYS of --asof), so each load posts once.
+
 Inputs are either live Snowflake (local, via common.q) or the JSON saved from the SRS MCP snowflake
-tool (cloud routine): `--monthly monthly.json --vintages vintages.json --backtest backtest.json`.
-Outputs to --out: monthly.png, quarterly.png, monthly.csv, quarterly.csv, summary.md.
+tool (cloud routine): `--monthly monthly.json --vintages vintages.json --backtest backtest.json [--hiring hiring.json]`.
+Outputs to --out: monthly.png, quarterly.png, monthly.csv, quarterly.csv, summary.md, and hiring.png
+when there is a new Revelio load.
 """
 import argparse
 import json
@@ -38,6 +42,8 @@ SHOW_QUARTERS = 8
 REFS = (4, 3, 2)          # m-4..m-2
 FALLBACK = 1              # m-1, only when fewer than two of m-4..m-2 have a fill at that day
 QUERIES = ("monthly", "vintages", "backtest")
+HIRING_MONTHS = 24
+HIRING_NEW_DAYS = 7       # routine runs weekly
 
 BLUE, ORANGE, AQUA, YELLOW = "#2a78d6", "#eb6834", "#1baf7a", "#eda100"
 INK, INK2, MUTED, GRID, SURFACE = "#0b0b0b", "#52514e", "#898781", "#e6e5e0", "#fcfcfb"
@@ -61,10 +67,30 @@ def load(args):
         for k in QUERIES:
             raw = json.loads(Path(getattr(args, k)).read_text())
             out[k] = _records(pd.DataFrame(raw["rows"] if isinstance(raw, dict) else raw))
+        if args.hiring:
+            raw = json.loads(Path(args.hiring).read_text())
+            out["hiring"] = _records(pd.DataFrame(raw["rows"] if isinstance(raw, dict) else raw))
         return out
     sys.path.insert(0, str(HERE.parent))
     from common import q
-    return {k: _records(q((HERE / f"{k}.sql").read_text())) for k in QUERIES}
+    return {k: _records(q((HERE / f"{k}.sql").read_text())) for k in QUERIES + ("hiring",)}
+
+
+# ---- hiring -----------------------------------------------------------------------------------
+
+def build_hiring(data, asof):
+    """Last HIRING_MONTHS months of postings, or None if the Revelio load isn't new this week."""
+    if not data.get("hiring"):
+        return None
+    h = pd.DataFrame(data["hiring"])
+    loaded = date.fromisoformat(max(h.BATCH_ID)[:10])
+    if not 0 <= (asof - loaded).days < HIRING_NEW_DAYS:
+        return None
+    s = h.set_index(pd.PeriodIndex(h.POST_MONTH, freq="M")).JOB_COUNT.astype(int)
+    s = s.reindex(pd.period_range(s.index.min(), s.index.max(), freq="M"), fill_value=0)
+    s.attrs["loaded"] = loaded
+    s.attrs["ly"] = s.shift(12)
+    return s.iloc[-HIRING_MONTHS:]
 
 
 # ---- monthly fill-rate projection -------------------------------------------------------------
@@ -269,9 +295,26 @@ def chart_quarterly(qt, path, asof):
     plt.close(fig)
 
 
+def chart_hiring(h, path):
+    x = np.arange(len(h))
+    lab = [m.strftime("%b\n%y") if m.month == 1 or i == 0 else m.strftime("%b") for i, m in enumerate(h.index)]
+    fig, ax = plt.subplots(figsize=(11, 4))
+    fig.patch.set_facecolor(SURFACE)
+    _style(ax)
+    ax.bar(x, h, width=0.7, color=BLUE, edgecolor=SURFACE, lw=2)
+    for i, v in enumerate(h):
+        ax.annotate(f"{v}", (x[i], v), xytext=(0, 3), textcoords="offset points", ha="center", fontsize=9, color=INK)
+    ax.set_xticks(x, lab)
+    ax.set_ylabel("Job postings", color=INK2)
+    ax.set_title(f"Zillow New Indeed Job Postings for Mortgage Roles (load as of {h.attrs['loaded']})",
+                 loc="left", color=INK, fontsize=12)
+    fig.savefig(path, dpi=150, bbox_inches="tight", facecolor=SURFACE)
+    plt.close(fig)
+
+
 # ---- summary ----------------------------------------------------------------------------------
 
-def summary(mo, qt, asof):
+def summary(mo, qt, asof, h=None):
     cap = max(mo.capture)
     stale = (asof - date.fromisoformat(cap)).days > 8
     lines = [f"*Zillow Cotality nowcast* (latest capture {cap}, run {asof})"]
@@ -288,14 +331,19 @@ def summary(mo, qt, asof):
     lines += ["", "Projected months (Cotality basis):"]
     for m, r in mo[mo.projected].iterrows():
         flag = " (uses m-1)" if (m - FALLBACK).strftime("%b-%y") in r.refs else ""
-        lines.append(f"• {m.strftime('%b-%y')}: day {r.day}, ${r.latest/1e6:,.0f}M recorded → ${r.proj/1e6:,.0f}M "
-                     f"(${r.lo/1e6:,.0f}–{r.hi/1e6:,.0f}M), {r.yoy_proj:+.1%} y/y. Fill refs: {r.refs}{flag}")
+        lines.append(f"• *{m.strftime('%b-%y')}*: day {r.day}, ${r.latest/1e6:,.0f}M recorded → ${r.proj/1e6:,.0f}M "
+                     f"(${r.lo/1e6:,.0f}–{r.hi/1e6:,.0f}M), *{r.yoy_proj:+.1%} y/y*. Fill refs: {r.refs}{flag}")
+    if h is not None:
+        m, ly = h.index[-1], h.attrs["ly"].get(h.index[-1])
+        lines += ["", f"New Indeed postings load ({h.attrs['loaded']}): {h.iloc[-1]} new Zillow mortgage job postings in "
+                      f"{m.strftime('%b-%y')} (prior month {h.iloc[-2]}"
+                      + (f", year ago {int(ly)})" if pd.notna(ly) else ")")]
     return "\n".join(lines)
 
 
 def main():
     ap = argparse.ArgumentParser()
-    for k in QUERIES:
+    for k in QUERIES + ("hiring",):
         ap.add_argument(f"--{k}")
     ap.add_argument("--out", default=str(HERE / "out"))
     ap.add_argument("--asof", default=str(date.today()))
@@ -311,7 +359,10 @@ def main():
     chart_quarterly(qt, out / "quarterly.png", asof)
     mo.to_csv(out / "monthly.csv")
     qt.to_csv(out / "quarterly.csv")
-    text = summary(mo, qt, asof)
+    h = build_hiring(data, asof)
+    if h is not None:
+        chart_hiring(h, out / "hiring.png")
+    text = summary(mo, qt, asof, h)
     (out / "summary.md").write_text(text, encoding="utf-8")
     print(text)
 
