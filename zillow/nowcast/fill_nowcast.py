@@ -6,6 +6,12 @@ tail factor at the month's current age (so a reference month that is still filli
 as complete). A month d days past month-end is projected as latest / fill, using the fill at day d
 of months m-4..m-2: mean -> central, lowest -> upper bound, highest -> lower bound (m-1 is added
 only when fewer than two of m-4..m-2 have a fill at that day). Months > 120 days old are final.
+A month is first estimated from its first capture no more than 7 days before month-end (MIN_DAY);
+estimates before month-end are flagged provisional.
+
+Revisions: each projected month's y/y re-estimated at every earlier weekly capture in the vintages
+(build_monthly on the data as it stood then), charted for the last REVISION_MONTHS months and listed
+under each month in the summary.
 
 Quarterly: the portal's model, run unchanged from the vendored `portal_model.py` (chain-ladder
 gross-up of months >= 21 days past month-end, partial quarters at quarter-to-date growth, / trailing
@@ -13,17 +19,18 @@ gross-up of months >= 21 days past month-end, partial quarters at quarter-to-dat
 A quarter gets no estimate until one of its months is 21 days past month-end.
 
 Hiring: Zillow mortgage job postings per month (Revelio Indeed), charted only on the first weekly
-run after a new Revelio load (BATCH_ID within HIRING_NEW_DAYS of --asof), so each load posts once.
+run after a new Revelio load (BATCH_ID timestamp within HIRING_NEW_DAYS before the run), so each
+load posts once.
 
 Inputs are either live Snowflake (local, via common.q) or the JSON saved from the SRS MCP snowflake
 tool (cloud routine): `--monthly monthly.json --vintages vintages.json --backtest backtest.json [--hiring hiring.json]`.
-Outputs to --out: monthly.png, quarterly.png, monthly.csv, quarterly.csv, summary.md, and hiring.png
-when there is a new Revelio load.
+Outputs to --out: monthly.png, quarterly.png, revisions.png, monthly.csv, quarterly.csv, revisions.csv,
+summary.md, and hiring.png when there is a new Revelio load.
 """
 import argparse
 import json
 import sys
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import matplotlib
@@ -37,6 +44,7 @@ sys.path.insert(0, str(HERE))
 import portal_model as pm  # noqa: E402
 
 MAX_DAY = 120
+MIN_DAY = -7              # first estimate: a capture no more than 7 days before month-end
 SHOW_MONTHS = 24
 SHOW_QUARTERS = 8
 REFS = (4, 3, 2)          # m-4..m-2
@@ -44,6 +52,7 @@ FALLBACK = 1              # m-1, only when fewer than two of m-4..m-2 have a fil
 QUERIES = ("monthly", "vintages", "backtest")
 HIRING_MONTHS = 24
 HIRING_NEW_DAYS = 7       # routine runs weekly
+REVISION_MONTHS = 4       # projected months on the revisions chart
 
 BLUE, ORANGE, AQUA, YELLOW = "#2a78d6", "#eb6834", "#1baf7a", "#eda100"
 INK, INK2, MUTED, GRID, SURFACE = "#0b0b0b", "#52514e", "#898781", "#e6e5e0", "#fcfcfb"
@@ -83,9 +92,11 @@ def build_hiring(data, asof):
     if not data.get("hiring"):
         return None
     h = pd.DataFrame(data["hiring"])
-    loaded = date.fromisoformat(max(h.BATCH_ID)[:10])
-    if not 0 <= (asof - loaded).days < HIRING_NEW_DAYS:
+    loaded = datetime.strptime(max(h.BATCH_ID)[:19], "%Y-%m-%d-%H-%M-%S")       # BATCH_ID is the UTC load time
+    run = datetime.combine(asof, datetime.now(timezone.utc).time())
+    if not timedelta(0) <= run - loaded < timedelta(days=HIRING_NEW_DAYS):    # a load after last week's run, by the clock
         return None
+    loaded = loaded.date()
     s = h.set_index(pd.PeriodIndex(h.POST_MONTH, freq="M")).JOB_COUNT.astype(int)
     s = s.reindex(pd.period_range(s.index.min(), s.index.max(), freq="M"), fill_value=0)
     s.attrs["loaded"] = loaded
@@ -94,6 +105,10 @@ def build_hiring(data, asof):
 
 
 # ---- monthly fill-rate projection -------------------------------------------------------------
+
+def _and(items):
+    return ", ".join(items[:-1]) + " and " + items[-1] if len(items) > 1 else items[0]
+
 
 def build_monthly(data, asof):
     fill = pm.build_fill(data["vintages"])
@@ -104,8 +119,9 @@ def build_monthly(data, asof):
 
     lat = pd.DataFrame(data["monthly"])
     lat["m"] = pd.PeriodIndex(lat.MONTH, freq="M")
-    lat = lat[lat.m.dt.end_time.dt.date < asof].set_index("m").sort_index()
+    lat = lat[lat.m.dt.start_time.dt.date < asof].set_index("m").sort_index()
     lat["age"] = [pm.day_age(t, m) for t, m in zip(lat.CAPTURE_TIMESTAMP, lat.MONTH)]
+    lat = lat[lat.age >= MIN_DAY]
     lat["vol"] = lat.TOTAL_LOANS_VOLUME.astype(float)
 
     vin = pd.DataFrame(data["vintages"])
@@ -140,7 +156,8 @@ def build_monthly(data, asof):
             if refs:
                 f = np.array(list(refs.values()))
                 row.update(proj=vol / f.mean(), lo=vol / f.max(), hi=vol / f.min(), n_refs=len(refs),
-                           refs=", ".join(f"{k.strftime('%b-%y')} {v:.1%}" for k, v in sorted(refs.items())))
+                           refs=", ".join(f"{k.strftime('%b-%y')} {v:.1%}" for k, v in sorted(refs.items())),
+                           refs_text=_and([f"{k.strftime('%B')} ({v:.1%})" for k, v in sorted(refs.items())]))
             else:
                 row.update(proj=np.nan, lo=np.nan, hi=np.nan, refs="none", n_refs=0)
         out.append(row)
@@ -150,6 +167,33 @@ def build_monthly(data, asof):
         mo[f"yoy_{c}"] = mo[c] / mo.ly - 1
     mo["projected"] = mo.day <= MAX_DAY
     return mo.iloc[-SHOW_MONTHS:]
+
+
+def build_revisions(data, mo):
+    """Each projected month's y/y as it would have been published at every earlier weekly capture:
+    build_monthly rerun on the vintages up to that capture (a month's volume = its last vintage then).
+    Only months already past month-end at that capture are estimated, as in the weekly post."""
+    vin = pd.DataFrame(data["vintages"])
+    vin["day"] = vin.CAPTURE_TIMESTAMP.str[:10]
+    first = vin.MONTH.min()
+    out = []
+    for cut in sorted(vin.day.unique()):
+        v = vin[vin.day <= cut]
+        last = v.sort_values("CAPTURE_TIMESTAMP").groupby("MONTH").last()
+        monthly = []
+        for r in data["monthly"]:
+            if r["MONTH"] in last.index:
+                r = dict(r, TOTAL_LOANS_VOLUME=last.at[r["MONTH"], "TOTAL_LOANS_VOLUME"],
+                         CAPTURE_TIMESTAMP=last.at[r["MONTH"], "CAPTURE_TIMESTAMP"])
+            elif r["MONTH"] >= first:                       # no vintage yet at this capture
+                continue
+            monthly.append(r)
+        m = build_monthly({"monthly": monthly, "vintages": v.drop(columns="day").to_dict("records")},
+                          date.fromisoformat(cut) + timedelta(days=1))
+        m = m[m.projected & m.index.isin(mo.index[mo.projected])]
+        out.append(m.assign(cap=cut)[["cap", "day", "yoy_proj", "yoy_lo", "yoy_hi"]])
+    rv = pd.concat(out).reset_index().dropna(subset=["yoy_proj"])
+    return rv.sort_values(["month", "cap"])
 
 
 # ---- quarterly: the portal model --------------------------------------------------------------
@@ -295,6 +339,31 @@ def chart_quarterly(qt, path, asof):
     plt.close(fig)
 
 
+def chart_revisions(rv, path, asof):
+    months = sorted(rv.month.unique())[-REVISION_MONTHS:]
+    cols = [YELLOW, AQUA, ORANGE, BLUE][-len(months):]
+    fig, ax = plt.subplots(figsize=(11, 5))
+    fig.patch.set_facecolor(SURFACE)
+    _style(ax)
+    for m, c in zip(months, cols):
+        g = rv[rv.month == m]
+        x = pd.to_datetime(g.cap)
+        ax.fill_between(x, g.yoy_lo, g.yoy_hi, color=c, alpha=0.15, lw=0)
+        ax.plot(x, g.yoy_proj, color=c, lw=2, marker="o", ms=5, label=m.strftime("%b-%y"))
+        pre = (g.day < 0).to_numpy()
+        ax.scatter(x[pre], g.yoy_proj[pre], s=30, facecolor=SURFACE, edgecolor=c, lw=1.5, zorder=4)
+        ax.annotate(f"{g.yoy_proj.iloc[-1]:+.1%}", (x.iloc[-1], g.yoy_proj.iloc[-1]), xytext=(8, 0),
+                    textcoords="offset points", va="center", fontsize=9, color=INK)
+    pct(ax)
+    ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%d %b"))
+    ax.set_ylabel("Projected volume y/y at each capture\n(open points: before month-end)", color=INK2)
+    ax.legend(frameon=False, fontsize=9, loc="upper left", ncol=len(months))
+    ax.set_title(f"Zillow monthly y/y estimate revisions by weekly Cotality capture, as of {asof}",
+                 loc="left", color=INK, fontsize=12)
+    fig.savefig(path, dpi=150, bbox_inches="tight", facecolor=SURFACE)
+    plt.close(fig)
+
+
 def chart_hiring(h, path):
     x = np.arange(len(h))
     lab = [m.strftime("%b\n%y") if m.month == 1 or i == 0 else m.strftime("%b") for i, m in enumerate(h.index)]
@@ -314,10 +383,10 @@ def chart_hiring(h, path):
 
 # ---- summary ----------------------------------------------------------------------------------
 
-def summary(mo, qt, asof, h=None):
+def summary(mo, qt, asof, h=None, rv=None):
     cap = max(mo.capture)
     stale = (asof - date.fromisoformat(cap)).days > 8
-    lines = [f"*Zillow Cotality nowcast* (latest capture {cap}, run {asof})"]
+    lines = ["*Zillow Cotality nowcast*"]
     if stale:
         lines.append(":warning: No new Cotality capture in the last 8 days.")
     lines.append("")
@@ -328,11 +397,18 @@ def summary(mo, qt, asof, h=None):
             continue
         basis = "all 3 months" if r.READY_N == 3 else f"{r.READY_MONTHS} only"
         lines.append(f"*{p}* ({basis}): {r.EST_YOY:+.1%} y/y (range {r.EST_YOY_LO:+.1%} to {r.EST_YOY_HI:+.1%}){cons}")
-    lines += ["", "Projected months (Cotality basis):"]
-    for m, r in mo[mo.projected].iterrows():
-        flag = " (uses m-1)" if (m - FALLBACK).strftime("%b-%y") in r.refs else ""
-        lines.append(f"• *{m.strftime('%b-%y')}*: day {r.day}, ${r.latest/1e6:,.0f}M recorded → ${r.proj/1e6:,.0f}M "
-                     f"(${r.lo/1e6:,.0f}–{r.hi/1e6:,.0f}M), *{r.yoy_proj:+.1%} y/y*. Fill refs: {r.refs}{flag}")
+    lines.append("")
+    for m, r in mo[mo.projected & mo.proj.notna()].iterrows():
+        d = abs(r.day)
+        when = "at month-end" if r.day == 0 else f"{d} day{'s' if d != 1 else ''} {'after' if r.day > 0 else 'before'} month-end"
+        if r.day < 0:
+            when += ", provisional"
+        lines.append(f"• *{m.strftime('%b-%y')}*: ${r.proj/1e6:,.0f}M (${r.lo/1e6:,.0f}–{r.hi/1e6:,.0f}M), "
+                     f"*{r.yoy_proj:+.1%} y/y* ({when}; uses {r.refs_text} for fill rates)")
+        g = rv[rv.month == m] if rv is not None else []
+        if len(g) > 1:
+            path = " → ".join(f"{date.fromisoformat(c):%d %b} {y:+.1%}" for c, y in zip(g.cap, g.yoy_proj))
+            lines.append(f"    Revisions: {path}")
     if h is not None:
         m, ly = h.index[-1], h.attrs["ly"].get(h.index[-1])
         lines += ["", f"New Indeed postings load ({h.attrs['loaded']}): {h.iloc[-1]} new Zillow mortgage job postings in "
@@ -357,12 +433,15 @@ def main():
     qt = build_quarterly(data, mo, asof)
     chart_monthly(mo, out / "monthly.png", asof)
     chart_quarterly(qt, out / "quarterly.png", asof)
+    rv = build_revisions(data, mo)
+    chart_revisions(rv, out / "revisions.png", asof)
     mo.to_csv(out / "monthly.csv")
     qt.to_csv(out / "quarterly.csv")
+    rv.to_csv(out / "revisions.csv", index=False)
     h = build_hiring(data, asof)
     if h is not None:
         chart_hiring(h, out / "hiring.png")
-    text = summary(mo, qt, asof, h)
+    text = summary(mo, qt, asof, h, rv)
     (out / "summary.md").write_text(text, encoding="utf-8")
     print(text)
 
