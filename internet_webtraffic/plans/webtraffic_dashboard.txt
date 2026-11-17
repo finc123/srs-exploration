@@ -1,0 +1,83 @@
+## Internet Web Traffic Tracker -- Dashboard
+
+# General Principles
+1. Use only Similarweb data we already ingest. No new API pulls, no new ingestion.
+2. All maths (TR7D, y/y) is done in Python in the build script; the page only selects and draws series.
+3. The page is a static web app in my personal S3 folder for now. Once I'm happy with it, it moves to a branch on the SRS monorepo, a PR, and a workflow job.
+4. Every chart is snippable and every filter lives in the URL, so the page works with Dashboard Subscriptions once published.
+5. Keep the page lean: no lengthy footnotes.
+
+## Goal
+A web app showing Similarweb desktop web traffic, Total and GenAI, for a set of internet names. It has two charts:
+1. Grouped Traffic: one line per domain in a chosen category, over the last 12 months.
+2. Individual Traffic: one domain, with one line per year (2026, 2025, 2024).
+
+## Agreed decisions (grilled 17 Nov 2026)
+Data
+- Source: SRS_MCP.SIMILARWEB.VISITS_V2_CURRENT, country = 'WW', metric = 'marketing_channels_desktop_visits'.
+- Total = the sum of all 10 desktop channels (direct, organic_search, paid_search, organic_social, paid_social, display_ads, mail, referrals, affiliates, gen_ai). It is desktop only, to match the GenAI base. We do not use all_traffic_visits.
+- GenAI = the gen_ai channel (visits referred by AI chatbots, desktop).
+- Data runs from 30 Oct 2023 to the latest ingested date (currently 3 Nov 2026; ingestion looks stalled since 6 Nov).
+- WW only. A country URL param can be added later without breaking links.
+
+Domains and categories
+- OTAs: booking.com, expedia.com, airbnb.com
+- Marketplaces: ebay.com, etsy.com, stubhub.com
+- E-Commerce: chewy.com, wayfair.com
+- Real Estate: zillow.com
+- Social Media: reddit.com, pinterest.com
+
+Calculations
+- Nominal = TR7D: the trailing 7-day average of daily visits, shown as average daily visits. A point is blank unless all 7 days are present.
+- Y/y = TR7D(t) / TR7D(t - 364) - 1, a 364-day shift so weekdays line up. It is blank where either side is missing, so y/y lines start around early Nov 2024.
+
+Chart 1: Grouped Traffic
+- Toggles: category (OTAs | Marketplaces | E-Commerce | Real Estate | Social Media), growth (Nominal | Y/y), traffic type (GenAI | Total).
+- Daily TR7D points over the 364 days ending at the latest data date.
+- One line per domain in the category. The legend always names the domain, even for one-domain categories.
+- Default: OTAs / Y/y / GenAI.
+
+Chart 2: Individual Traffic
+- Toggles: domain (the 10 above), growth (Nominal | Y/y), traffic type (GenAI | Total).
+- X-axis is Jan-Dec on the 2026 calendar. There are three lines: 2026 (to the latest date), 2025 = the value 364 days earlier, and 2024 = the value 728 days earlier.
+- Gaps where data does not exist (e.g. 2024 y/y) are left blank, with no footnote.
+- Default: booking.com / Nominal / Total.
+
+Subscriptions and URL
+- Sections: data-srs-section="grouped-traffic" and data-srs-section="individual-traffic", each on the existing card element.
+- URL params: cat, g_growth, g_type (grouped); domain, i_growth, i_type (individual). Values are short slugs (e.g. otas, yoy, genai, booking.com).
+- Read on load, falling back to the default when a value is unknown. Write with history.replaceState inside try/catch, and leave a param out when it equals its default. No localStorage and no # routing. Avoid the reserved names at, shell and srs_theme.
+- Toggles carry data-srs-hide. Each chart title shows the active filters, so an emailed image explains itself.
+
+Look
+- SRS theme (/~srs/themes/...) and Chart.js, styled like the Muse and AI consumer pages.
+
+## Files
+C:\Users\fintan.creedon\code\exploration\internet_webtraffic\
+- plans/webtraffic_dashboard.txt -- this plan
+- build_data.py -- queries Snowflake and writes app/data.json
+- app/index.html -- the page (under 60 KiB, no inline data)
+- app/data.json -- {"generated_at": "<ISO UTC>", "domains": [...], "categories": [...], "series": {...}}, written with allow_nan=False and kept under 2 MB
+- app/index.html.srsdoc -- sidecar (srsdoc_version 2, dashboard_type "static", workflows [], owner fintan.creedon@srsfund.com, Objective / Data locations / Good to know, changelog)
+
+## Steps
+1. build_data.py
+   a. Pull daily desktop visits by channel for the 10 domains (WW) from VISITS_V2_CURRENT.
+   b. Per domain, build daily Total (sum of channels) and GenAI on a complete calendar, so missing days stay missing.
+   c. Compute TR7D (min 7 days) and y/y with a 364-day shift.
+   d. Write app/data.json: per domain x type (total, genai), date-aligned arrays of tr7d and yoy, plus the latest date.
+   e. Sanity checks: the Wayfair Oct-2026 monthly sums match the figures from this session (desktop total 33.1m, GenAI 0.447m); the latest date is printed; no NaN/inf.
+2. app/index.html
+   a. Two cards with the toggles, two Chart.js line charts, and URL state handling as above.
+   b. Grouped chart: slice the last 364 days. Individual chart: map each 2026 calendar day d to series values at d, d-364 and d-728.
+   c. The y/y axis is formatted as %, the nominal axis as visits (k/m).
+3. Preview on localhost, screenshot both charts in a few toggle states, and check that a URL with params reopens the same view.
+4. Write the .srsdoc sidecar.
+5. Upload index.html, data.json and the sidecar to s3://srsinvest-apps/s3-browser/personal/fintan-creedon/internet-web-traffic-tracker/ via the SRS MCP s3 tool (run signed curl from Bash, not PowerShell). Then run s3 check on the page.
+   URL: https://apps.srsinvest.com/s3-browser/personal/fintan-creedon/internet-web-traffic-tracker/index.html
+6. Commit locally in the exploration repo (no push).
+
+## Later (not now)
+- Move to a branch on the SRS monorepo, open a PR, and turn it into a workflow job writing to a sector folder (e.g. internet/). dashboard_type then becomes "workflow".
+- Fix or flag the stalled Similarweb ingestion (latest date 3 Nov 2026).
+- Possible additions: mobile channels (needs marketing_channels_mobile_visits ingestion), US/RoW toggle, more domains.
