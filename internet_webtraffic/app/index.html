@@ -236,7 +236,7 @@ function renderIndividual() {
   const labels = Array.from({length: n}, (_, i) => iso(start + i * DAY));
   const at = t => { const i = idx[iso(t)]; return i == null ? null : s[i]; };
   const sets = [0, 1, 2].map(k => ({label: String(yr - k),
-    data: labels.map(l => { const t = Date.parse(l); return t > Date.parse(D.end) ? null : at(t - k * 364 * DAY); })}));
+    data: labels.map(l => { const t = Date.parse(l); return k === 0 && t > Date.parse(D.end) ? null : at(t - k * 364 * DAY); })}));
   $("individual-title").textContent = "Individual Traffic: " + state.domain + ", " + chartLabel(state.i_type, state.i_growth) + " (TR7D)";
   lineChart("individual", "individual-chart", labels, sets, mode(state.i_type, state.i_growth),
     (l, full) => full ? +l.slice(8) + " " + MON[+l.slice(5, 7) - 1] : MON[+l.slice(5, 7) - 1]);

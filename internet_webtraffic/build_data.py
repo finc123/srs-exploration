@@ -2,7 +2,7 @@
 
     ..\\.venv\\Scripts\\python.exe build_data.py
 
-Source: SRS_MCP.SIMILARWEB.VISITS_V2_CURRENT, WW, marketing_channels_desktop_visits.
+Source: SIMILARWEB.COMMON.VISITS_V2, WW, marketing_channels_desktop_visits.
   * total = sum of all desktop channels for the day
   * genai = the gen_ai channel
 Both are turned into TR7D (trailing 7-day average of daily visits, blank unless all
@@ -61,7 +61,7 @@ def load() -> pd.DataFrame:
                SUM(value)                              AS total,
                SUM(IFF(channel = 'gen_ai', value, 0))  AS genai,
                COUNT_IF(channel = 'gen_ai')            AS has_genai
-        FROM SRS_MCP.SIMILARWEB.VISITS_V2_CURRENT
+        FROM SIMILARWEB.COMMON.VISITS_V2
         WHERE country = 'WW' AND metric = 'marketing_channels_desktop_visits'
           AND domain IN ({domains})
         GROUP BY domain, date
@@ -106,7 +106,7 @@ def main() -> None:
 
     payload = {
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "source": "SRS_MCP.SIMILARWEB.VISITS_V2_CURRENT (WW, marketing_channels_desktop_visits)",
+        "source": "SIMILARWEB.COMMON.VISITS_V2 (WW, marketing_channels_desktop_visits)",
         "start": days[0].date().isoformat(),
         "end": days[-1].date().isoformat(),
         "categories": CATEGORIES,

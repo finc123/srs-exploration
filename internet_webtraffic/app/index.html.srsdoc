@@ -4,10 +4,31 @@
   "subtitle": "Similarweb desktop visits (WW) for 11 internet names: total, GenAI referrals and GenAI share, as TR7D levels and Y/Y growth.",
   "owner": "fintan.creedon@srsfund.com",
   "dashboard_type": "static",
-  "tickers": ["BKNG", "EXPE", "ABNB", "EBAY", "ETSY", "STUB", "CHWY", "W", "Z", "RDDT", "PINS"],
+  "tickers": [
+    "BKNG",
+    "EXPE",
+    "ABNB",
+    "EBAY",
+    "ETSY",
+    "STUB",
+    "CHWY",
+    "W",
+    "Z",
+    "RDDT",
+    "PINS"
+  ],
   "workflows": [],
-  "body": "## Objective\n\nTrack how much desktop web traffic each name gets in total and from AI chatbots (Similarweb's Gen AI channel), and how fast each is growing.\n\n- **Grouped Traffic**: one line per domain in a category (OTAs, Marketplaces, E-Commerce, Real Estate, Social Media) over the last 364 days.\n- **Individual Traffic**: one domain, one line per year (latest year and the two before), on a Jan to Dec axis.\n\n## Data locations\n\n### Inputs\n\n- `SRS_MCP.SIMILARWEB.VISITS_V2_CURRENT`, country `WW`, metric `marketing_channels_desktop_visits` (daily, all 10 channels; history from late 2023).\n\n### Outputs\n\n- `data.json` beside this page, built by `exploration/internet_webtraffic/build_data.py` and uploaded by hand.\n\n## Good to know\n\n- **Desktop only.** Total is the sum of the 10 desktop channels, not Similarweb's all-device total, so it shares a base with GenAI.\n- **GenAI** is Similarweb's Gen AI marketing channel: visits that arrive by clicking a link in an AI chatbot answer (ChatGPT, Gemini, Perplexity, Claude, Copilot and others). Mentions without a click are not counted.\n- **TR7D** is the trailing 7-day average of daily visits, blank unless all 7 days exist. **Y/Y** is TR7D against TR7D 364 days earlier, so weekdays line up. **Gen AI Share of Total** is TR7D GenAI divided by TR7D Total, a level only (Y/Y is greyed out).\n- In the Individual chart the prior years are shifted 364 and 728 days, not matched by calendar date.\n- GenAI Y/Y can be extreme where last year's GenAI base was near zero (e.g. chewy.com, stubhub.com, wayfair.com in 2024 to 2025). Values are shown as is.\n- Filters live in the URL (`cat`, `g_growth`, `g_type`, `domain`, `i_growth`, `i_type`) and both charts are snippable sections (`grouped-traffic`, `individual-traffic`) for Dashboard Subscriptions.\n- Planned to move to an srs workflow (sector folder) once agreed.",
+  "body": "## Objective\n\nTrack how much desktop web traffic each name gets in total and from AI chatbots (Similarweb's Gen AI channel), and how fast each is growing.\n\n- **Grouped Traffic**: one line per domain in a category (OTAs, Marketplaces, E-Commerce, Real Estate, Social Media) over the last 364 days.\n- **Individual Traffic**: one domain, one line per year (latest year and the two before), on a Jan to Dec axis.\n\n## Data locations\n\n### Inputs\n\n- `SIMILARWEB.COMMON.VISITS_V2`, country `WW`, metric `marketing_channels_desktop_visits` (daily, all 10 channels; history from late 2023).\n\n### Outputs\n\n- `data.json` beside this page, built by `exploration/internet_webtraffic/build_data.py` and uploaded by hand.\n\n## Good to know\n\n- **Desktop only.** Total is the sum of the 10 desktop channels, not Similarweb's all-device total, so it shares a base with GenAI.\n- **GenAI** is Similarweb's Gen AI marketing channel: visits that arrive by clicking a link in an AI chatbot answer (ChatGPT, Gemini, Perplexity, Claude, Copilot and others). Mentions without a click are not counted.\n- **TR7D** is the trailing 7-day average of daily visits, blank unless all 7 days exist. **Y/Y** is TR7D against TR7D 364 days earlier, so weekdays line up. **Gen AI Share of Total** is TR7D GenAI divided by TR7D Total, a level only (Y/Y is greyed out).\n- In the Individual chart the prior years are shifted 364 and 728 days, not matched by calendar date. The latest year stops at the last data date; prior years run the full year.\n- **Google AI Mode break.** Similarweb counted Google AI Mode traffic as Gen AI from 11 Apr 2026 to 31 Aug 2026 and not before or after. GenAI and GenAI share step up on 11 Apr and down on 1 Sep (about +200k and -500k daily visits across these 11 domains); Total is unaffected. Read GenAI levels and Y/Y across those dates with care.\n- GenAI Y/Y can be extreme where last year's GenAI base was near zero (e.g. chewy.com, stubhub.com, wayfair.com in 2024 to 2025). Values are shown as is.\n- Filters live in the URL (`cat`, `g_growth`, `g_type`, `domain`, `i_growth`, `i_type`) and both charts are snippable sections (`grouped-traffic`, `individual-traffic`) for Dashboard Subscriptions.\n- Planned to move to an srs workflow (sector folder) once agreed.",
   "changelog": [
-    {"date": "2026-11-17", "by": "fintan.creedon@srsfund.com", "change": "Created the page."}
+    {
+      "date": "2026-11-17",
+      "by": "fintan.creedon@srsfund.com",
+      "change": "Created the page."
+    },
+    {
+      "date": "2026-11-17",
+      "by": "fintan.creedon@srsfund.com",
+      "change": "Source switched to SIMILARWEB.COMMON.VISITS_V2 (fresher than the SRS_MCP mirror); prior years in the Individual chart show the full year; Gen AI Share of Total added."
+    }
   ]
 }
