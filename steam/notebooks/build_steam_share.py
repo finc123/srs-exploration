@@ -438,7 +438,7 @@ md(r"""
 ## 5. Web app
 
 **Method**
-- **Data file.** `app/steam-share/steam.json`: per country, daily arrays of Steam spend for each of the seven types and mailbox
+- **Data files.** `app/steam-share/card.json`: per country, daily Steam and total card spend (section below). `app/steam-share/steam.json`: per country, daily arrays of Steam spend for each of the seven types and mailbox
   spend (all merchants; the fixed cohort is not exported: section 4.1 shows it moves quarterly share Y/Y by at most 2.4pp) (local currency) from 1 Jan 2020 to the country's last complete day, plus population weights. The page computes windows, shares,
   regional weights, Y/Y and the quarter table in the browser, the same way as sections 2–4.
 - **Card source.** The page's Source toggle switches the share to card data: Steam card charges ÷ all card spend, per country.
@@ -469,16 +469,19 @@ card_us = (pl.read_parquet(DATA / "card_steam_us_mu.parquet").select(country=pl.
 card_eu = (pl.read_parquet(DATA / "card_steam_eu.parquet").filter(pl.col("txntype") == "CARD PAYMENT")
            .group_by("country", d=pl.col("date").cast(pl.Date)).agg(pl.col("steam", "total").cast(pl.Float64).sum()))
 card = pl.concat([card_us, card_eu.select(card_us.columns)])
-for c in countries:
-    g = card.filter(pl.col("country") == c["country"])
+card_rows = []
+for c in COUNTRY_POP:
+    g = card.filter(pl.col("country") == c)
     a, b = g["d"].min(), g["d"].max() - timedelta(days=CARD_SETTLE)
     g = pl.DataFrame({"d": pl.date_range(a, b, eager=True)}).join(g, on="d", how="left").fill_null(0.0).sort("d")
-    c["card"] = {"start": str(a), "end": str(b), "steam": [round(v, 1) for v in g["steam"]], "total": [round(v, 1) for v in g["total"]]}
-print("card:", {c["country"]: (c["card"]["start"], c["card"]["end"]) for c in countries})
+    card_rows.append({"country": c, "start": str(a), "end": str(b), "steam": [round(v, 1) for v in g["steam"]], "total": [round(v, 1) for v in g["total"]]})
+print("card:", {c["country"]: (c["start"], c["end"]) for c in card_rows})
 
 payload = {"generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "shift": SHIFT,
            "types": [[t, TYPE_NAME[t]] for t in TYPES], "default_types": DEFAULT, "countries": countries}
 (APP / "steam.json").write_text(json.dumps(payload, separators=(",", ":")))
+# card is its own file, as the srs steam job writes it (the page loads it separately and disables Card without it)
+(APP / "card.json").write_text(json.dumps({"generated_at": payload["generated_at"], "card": card_rows}, separators=(",", ":")))
 print(f"steam.json: {(APP / 'steam.json').stat().st_size / 1e3:.0f} KB; ends", {c["country"]: c["end"] for c in countries})
 
 # check: Combined 28-day share Y/Y on the last Combined day, recomputed from the JSON arrays as the page does

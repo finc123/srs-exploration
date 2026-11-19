@@ -56,6 +56,7 @@ tr.partial td{color:var(--muted)}
 .ticks .links button{background:none;border:0;padding:0;color:var(--accent);cursor:pointer;font:inherit}
 .ticks.locked label{opacity:.5;cursor:not-allowed}
 .ticks.locked .links{display:none}
+.seg button:disabled{opacity:.45;cursor:not-allowed}
 </style>
 </head>
 <body>
@@ -110,6 +111,7 @@ tr.partial td{color:var(--muted)}
 <script>
 "use strict";
 const DATA_FILES = ["steam.json"];
+const CARD_FILE = "card.json";   // optional: without it the page shows e-receipts only and Card is disabled
 const DAY = 864e5;
 const REGIONS = [["US", ["US"]], ["EU5", ["UK", "DE", "FR", "IT", "ES"]], ["Combined", ["US", "UK", "DE", "FR", "IT", "ES"]],
   ["UK", ["UK"]], ["DE", ["DE"]], ["FR", ["FR"]], ["IT", ["IT"]], ["ES", ["ES"]]];
@@ -184,14 +186,24 @@ async function loadData() {
   }));
   return Object.assign({}, ...parts);
 }
-function seg2(id, opts, value, set) {
-  const draw = v => { $(id).innerHTML = opts.map(([k, l]) => '<button type="button" data-v="' + k + '" aria-pressed="' + (k === v) + '">' + l + "</button>").join(""); };
+function seg2(id, opts, value, set, off = () => false) {
+  const draw = v => { $(id).innerHTML = opts.map(([k, l]) => '<button type="button" data-v="' + k + '" aria-pressed="' + (k === v) + '"' +
+    (off(k) ? ' disabled title="Card data is unavailable"' : "") + ">" + l + "</button>").join(""); };
   draw(value);
-  $(id).addEventListener("click", e => { const b = e.target.closest("[data-v]"); if (!b) return; set(b.dataset.v); draw(b.dataset.v); });
+  $(id).addEventListener("click", e => { const b = e.target.closest("[data-v]"); if (!b || b.disabled) return; set(b.dataset.v); draw(b.dataset.v); });
+}
+/* the card file, or null when it is missing or unreadable (the e-receipt view still works) */
+async function loadCard() {
+  try {
+    const r = await fetch(CARD_FILE, {cache: "no-store"});
+    if (!r.ok) return null;
+    const j = await r.json();
+    return j && Array.isArray(j.card) && j.card.length ? j : null;
+  } catch (e) { return null; }
 }
 
 /* ---- state ---- */
-let D = null, C = {}, CC = {}, SHIFT = 364, T0 = 0, T1 = 0, TYPES = [], DEFAULT_TYPES = [], types = [];
+let D = null, CARD = null, C = {}, CC = {}, SHIFT = 364, T0 = 0, T1 = 0, TYPES = [], DEFAULT_TYPES = [], types = [];
 const REGION_OPTS = REGIONS.map(([r]) => [r, r]);
 let src = pick("src", SRC_OPTS), sregion = pick("sregion", REGION_OPTS), smode = pick("smode", MODE_OPTS),
   sw = pick("sw", WINDOW_OPTS), shist = pick("shist", HIST_OPTS), qview = pick("qview", [["share"], ["yoy"]]);
@@ -210,11 +222,12 @@ function prep() {
     TYPES.map(([k]) => k).concat(["total"]).forEach(k => {
       const p = new Float64Array(n + 1); for (let i = 0; i < n; i++) p[i + 1] = p[i] + ((c[k] || [])[i] || 0); pre[k] = p; });
     C[c.country] = {t0, n, pop: c.pop, pre, end: Date.parse(c.end + "T00:00:00Z")};
-    if (c.card) {   // card: one Steam series (types summed by the card) and all card spend
-      const k = c.card, m = k.total.length, cp = {};
-      ["steam", "total"].forEach(f => { const q = new Float64Array(m + 1); for (let i = 0; i < m; i++) q[i + 1] = q[i] + (k[f][i] || 0); cp[f] = q; });
-      CC[c.country] = {t0: Date.parse(k.start + "T00:00:00Z"), n: m, pop: c.pop, pre: cp, end: Date.parse(k.end + "T00:00:00Z"), card: true};
-    }
+  });
+  (CARD ? CARD.card : []).forEach(k => {   // card: one Steam series (types summed by the card) and all card spend
+    const m = k.total.length, cp = {}, pop = C[k.country] && C[k.country].pop;
+    if (!pop) return;
+    ["steam", "total"].forEach(f => { const q = new Float64Array(m + 1); for (let i = 0; i < m; i++) q[i + 1] = q[i] + (k[f][i] || 0); cp[f] = q; });
+    CC[k.country] = {t0: Date.parse(k.start + "T00:00:00Z"), n: m, pop, pre: cp, end: Date.parse(k.end + "T00:00:00Z"), card: true};
   });
   T0 = Math.min(...Object.values(C).map(c => c.t0)); T1 = Math.max(...Object.values(C).map(c => c.end));
 }
@@ -375,7 +388,9 @@ function renderAll() { drawTypes(); renderNote(); renderShare(); renderTable(); 
 
 (async () => {
   try {
-    D = await loadData();
+    [D, CARD] = await Promise.all([loadData(), loadCard()]);
+    const hasCard = !!CARD && REGIONS.every(([, ms]) => ms.every(k => CARD.card.some(c => c.country === k)));
+    if (!hasCard) { CARD = null; if (src === "card") { src = "receipt"; setParam("src", src); } }
     SHIFT = D.shift || 364;
     TYPES = D.types; DEFAULT_TYPES = D.default_types;
     const want = (getParam("types") || DEFAULT_TYPES.join(",")).split(",").filter(k => TYPES.some(t => t[0] === k));
@@ -383,10 +398,11 @@ function renderAll() { drawTypes(); renderNote(); renderShare(); renderTable(); 
     prep();
     const ends = Object.fromEntries(D.countries.map(c => [c.country, c.end]));
     const fox = D.countries.filter(c => c.country !== "US").map(c => c.end).sort()[0];
-    const cardEnd = k => D.countries.filter(c => c.card && k(c.country)).map(c => c.card.end).sort()[0];
+    const cardEnd = k => CARD.card.filter(c => k(c.country)).map(c => c.end).sort()[0];
     $("stamp").textContent = "Data as of " + new Date(Date.parse(D.generated_at)).toISOString().replace("T", " ").slice(0, 16) +
       " UTC · Slice (US) complete to " + nice(Date.parse(ends.US)) + "; Fox (EU5) to " + nice(Date.parse(fox)) +
-      " · Card: Consumer Edge (US) to " + nice(Date.parse(cardEnd(c => c === "US"))) + "; Fable (EU5) to " + nice(Date.parse(cardEnd(c => c !== "US")));
+      (hasCard ? " · Card: Consumer Edge (US) to " + nice(Date.parse(cardEnd(c => c === "US"))) + "; Fable (EU5) to " + nice(Date.parse(cardEnd(c => c !== "US")))
+               : " · Card data unavailable");
     $("pg-types").addEventListener("change", e => {
       const box = e.target.closest("[data-t]"); if (!box) return;
       const next = box.checked ? types.concat(box.dataset.t) : types.filter(k => k !== box.dataset.t);
@@ -395,7 +411,7 @@ function renderAll() { drawTypes(); renderNote(); renderShare(); renderTable(); 
     });
     $("pg-types").addEventListener("click", e => { const b = e.target.closest("[data-preset]"); if (!b) return;
       setTypes(b.dataset.preset === "all" ? TYPES.map(([k]) => k) : DEFAULT_TYPES); });
-    seg2("pg-src", SRC_OPTS, src, v => { src = v; setParam("src", v); renderAll(); });
+    seg2("pg-src", SRC_OPTS, src, v => { src = v; setParam("src", v); renderAll(); }, k => k === "card" && !hasCard);
     seg2("sh-region", REGION_OPTS, sregion, v => { sregion = v; setParam("sregion", v); drawTypes(); renderShare(); });
     seg2("sh-mode", MODE_OPTS, smode, v => { smode = v; setParam("smode", v); renderShare(); });
     seg2("sh-window", WINDOW_OPTS, sw, v => { sw = v; setParam("sw", v); renderShare(); });
