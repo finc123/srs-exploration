@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Steam</title>
+<!-- Fallback only (theme.css unreachable). Declared first, in a lower cascade layer, so theme.css always wins. -->
+<style>
+@layer srs-fallback{
+:root{--bg:#f2f2f7;--card:#fff;--line:#e5e5ea;--text:#1d1d1f;--muted:#6e6e73;--accent:#0066cc;--hl:#e8f1ff;--hover:#f5f5f7;
+ --up:#1e7b34;--down:#d70015;--track:#e3e3e8;--seg:#fff;--grid:#e5e5ea;--axis:#6e6e73;--bad-bg:#ffe5e5;--bad-fg:#a3000f;
+ --series-1:#007aff;--series-2:#b08800;--series-3:#8944ab;--series-4:#d30f45;--series-5:#0098b4;--series-6:#e8710a;
+ --radius-bar:4px;--font:-apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,"Helvetica Neue",sans-serif;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#000;--card:#1c1c1e;--line:#38383a;--text:#f5f5f7;--muted:#98989d;
+ --accent:#0a84ff;--hl:#0a2a52;--hover:#2c2c2e;--up:#30d158;--down:#ff6961;--track:#2c2c2e;--seg:#636366;--grid:#38383a;--axis:#98989d;
+ --bad-bg:#3b0d0c;--bad-fg:#ff9f9a;--series-1:#0a84ff;--series-2:#b08800;--series-3:#d45bc8;--series-4:#ff375f;--series-5:#00a88f;--series-6:#e65c00;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#000;--card:#1c1c1e;--line:#38383a;--text:#f5f5f7;--muted:#98989d;--accent:#0a84ff;--hl:#0a2a52;
+ --hover:#2c2c2e;--up:#30d158;--down:#ff6961;--track:#2c2c2e;--seg:#636366;--grid:#38383a;--axis:#98989d;--bad-bg:#3b0d0c;--bad-fg:#ff9f9a;
+ --series-1:#0a84ff;--series-2:#b08800;--series-3:#d45bc8;--series-4:#ff375f;--series-5:#00a88f;--series-6:#e65c00;color-scheme:dark}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 var(--font)}
+.wrap{max-width:1180px;margin:0 auto;padding:0 20px}main.wrap{display:grid;gap:16px;padding-top:16px;padding-bottom:32px}
+.card{background:var(--card);border-radius:14px;padding:16px 18px;min-width:0}.chartbox{position:relative;height:300px}
+.tools,.bar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.sub,.stamp,.na{color:var(--muted)}a{color:var(--accent)}.scroll{overflow-x:auto}table{border-collapse:collapse;width:100%}
+th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}.num{text-align:right}.up{color:var(--up)}.down{color:var(--down)}
+.seg button[aria-pressed="true"]{font-weight:700}[data-theme-switch]{display:none}.banner.bad{background:var(--bad-bg);color:var(--bad-fg);padding:8px 12px}
+}
+</style>
+<link rel="stylesheet" href="/~srs/themes/srs-default/v1/theme.css">
+<script src="/~srs/themes/srs-default/v1/theme.js"></script>
+<script>
+/* Local preview (file:// or localhost): the theme comes from the html_preview proxy, which serves the repo's copy. */
+if (location.protocol === "file:" || ["localhost", "127.0.0.1"].includes(location.hostname)) {
+  const P = "http://127.0.0.1:8765/~srs/themes/srs-default/v1/", l = document.createElement("link"), s = document.createElement("script");
+  l.rel = "stylesheet"; l.href = P + "theme.css"; s.src = P + "theme.js";
+  document.head.append(l, s);
+}
+</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+.chartbox.tall{height:380px}
+.ctl{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.ctl.adj{margin:6px 0 8px}
+.ctl .lbl{color:var(--muted);font-size:13px}
+.lede{margin:0 0 4px;color:var(--muted)}
+.lede b{color:var(--text)}
+td.num,th.num{font-variant-numeric:tabular-nums}
+tr.partial td{color:var(--muted)}
+.ticks{display:flex;flex-wrap:wrap;gap:6px 18px;margin:4px 0 2px}
+.ctl .ticks{flex:1 1 0;min-width:240px;margin:0}
+.ctl.adj + .ctl.adj{margin-top:0}
+.ticks label{display:inline-flex;gap:6px;align-items:center;font-size:14px;cursor:pointer;white-space:nowrap}
+.ticks input{accent-color:var(--accent);width:15px;height:15px;margin:0}
+.ticks .mix{color:var(--muted);font-variant-numeric:tabular-nums}
+.ticks .links{font-size:13px;color:var(--muted)}
+.ticks .links button{background:none;border:0;padding:0;color:var(--accent);cursor:pointer;font:inherit}
+.ticks.locked label{opacity:.5;cursor:not-allowed}
+.ticks.locked .links{display:none}
+</style>
+</head>
+<body>
+<header class="page-header"><div class="wrap">
+  <div class="bar">
+    <h1>Steam</h1>
+    <div class="actions">
+      <div class="seg" role="group" aria-label="Theme" data-theme-switch>
+        <button type="button" data-theme-choice="auto">Auto</button><button type="button" data-theme-choice="light">Light</button><button type="button" data-theme-choice="dark">Dark</button>
+      </div>
+    </div>
+  </div>
+  <p class="sub">What share of e-receipt spend goes to Steam, and how is it trending Y/Y? NIQ Slice (US) and Fox (UK, Germany, France, Italy, Spain), with card data (Consumer Edge US, Fable EU5) as a check.</p>
+  <div class="stamp" id="stamp">Data as of ...</div>
+  <div id="banner" role="status"></div>
+</div></header>
+<main class="wrap">
+  <section class="card" id="sh-card" data-srs-section="share">
+    <div class="tools"><h2 id="sh-title">Steam share of mailbox spend, by year</h2>
+      <div class="ctl" data-srs-hide>
+        <span class="seg" role="group" aria-label="Region" id="sh-region"></span>
+        <button type="button" class="btn" data-fs="sh-card" aria-label="Full screen" title="Full screen">&#x2922;</button></div></div>
+    <div class="ctl adj" data-srs-hide>
+      <span class="lbl">Source</span><span class="seg" role="group" aria-label="Source" id="pg-src"></span>
+    </div>
+    <div class="ctl adj" data-srs-hide>
+      <span class="lbl">Steam spend</span><div class="ticks" id="pg-types" role="group" aria-label="Steam spend types"></div>
+    </div>
+    <div class="ctl adj" data-srs-hide>
+      <span class="seg" role="group" aria-label="View" id="sh-mode"></span>
+      <span class="lbl">Trailing days</span><span class="seg" role="group" aria-label="Trailing days" id="sh-window"></span>
+      <span class="lbl">History</span><span class="seg" role="group" aria-label="History" id="sh-hist"></span>
+    </div>
+    <p class="lede" id="sh-lede"></p>
+    <div class="chartbox tall"><canvas id="sh-chart" role="img" aria-label="Steam share of spend, one line per year"></canvas></div>
+    <p class="stamp">One line per year on a Jan–Dec axis. Earlier years are shifted forward by 364 days per year so weekdays line up: the gap between two adjacent lines in Nominal is the Y/Y. Y/Y = share over the trailing days ÷ share over the same days 364 days earlier − 1. EU5 and Combined are population-weighted averages of the country shares.</p>
+    <p class="stamp" id="pg-mix"></p>
+    <p class="stamp" id="pg-note"></p>
+  </section>
+
+  <section class="card" id="qt-card" data-srs-section="quarters">
+    <div class="tools"><h2>Calendar quarters</h2>
+      <div class="ctl" data-srs-hide><span class="seg" role="group" aria-label="Table value" id="qt-view"></span></div></div>
+    <div class="scroll"><table id="qt"><thead></thead><tbody></tbody></table></div>
+    <p class="stamp">Share over each quarter's days; Y/Y against the same days shifted back 364 days. Uses the source and Steam spend types selected in the chart above. The current quarter is to date (grey): each column runs to its own panel's last complete day (see the stamp at the top).</p>
+  </section>
+</main>
+<footer class="wrap">
+  <a href="./index.html.srsdoc">Source and method: see the documentation</a>
+</footer>
+
+<script>
+"use strict";
+const DATA_FILES = ["steam.json"];
+const DAY = 864e5;
+const REGIONS = [["US", ["US"]], ["EU5", ["UK", "DE", "FR", "IT", "ES"]], ["Combined", ["US", "UK", "DE", "FR", "IT", "ES"]],
+  ["UK", ["UK"]], ["DE", ["DE"]], ["FR", ["FR"]], ["IT", ["IT"]], ["ES", ["ES"]]];
+const REGION_NAME = {US: "US", EU5: "EU5", Combined: "Combined", UK: "UK", DE: "Germany", FR: "France", IT: "Italy", ES: "Spain"};
+const MODE_OPTS = [["nominal", "Nominal"], ["yoy", "Y/Y"]];
+const WINDOW_OPTS = [["1", "1"], ["7", "7"], ["28", "28"], ["91", "91"]];
+const HIST_OPTS = [["3", "3 years"], ["5", "5 years"]];
+const SHOW_FROM = Date.UTC(2021, 0, 1), YOY_FROM = Date.UTC(2022, 0, 1);   // Fox had ~50k panelists before 2021
+const SRC_OPTS = [["receipt", "E-receipt"], ["card", "Card"]];
+const PARAMS = {src: "receipt", types: "", sregion: "US", smode: "nominal", sw: "28", shist: "3", qview: "yoy"};   // types "" = the data's default
+
+/* ---- helpers ---- */
+const $ = id => document.getElementById(id);
+const isNum = v => typeof v === "number" && isFinite(v);
+const fmt = (n, d = 0) => isNum(n) ? n.toLocaleString("en-US", {minimumFractionDigits: d, maximumFractionDigits: d}) : "n/a";
+const pct = (v, d = 1, sign = true) => isNum(v) ? (sign && v > 0 ? "+" : "") + fmt(v * 100, d) + "%" : "n/a";
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+const iso = t => new Date(t).toISOString().slice(0, 10);
+const nice = t => new Date(t).toLocaleDateString("en-GB", {day: "numeric", month: "short", year: "numeric", timeZone: "UTC"});
+function theme() {
+  return {series: [1, 2, 3, 4, 5, 6].map(i => css("--series-" + i)), axis: css("--axis"), grid: css("--grid"), muted: css("--muted"),
+    card: css("--card"), text: css("--text"), line: css("--line"), font: css("--font")};
+}
+function onThemeChange(fn) {
+  window.addEventListener("srs:themechange", fn);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (!window.SRSTheme) fn(); });
+}
+function regionColour(r, t) {
+  return {US: t.series[0], EU5: t.series[5], Combined: t.text, UK: t.series[1], DE: t.series[2], FR: t.series[3], IT: t.series[4], ES: t.muted}[r];
+}
+
+/* ---- URL params ---- */
+const URLQ = new URLSearchParams(location.search);
+const getParam = k => URLQ.get(k) ?? PARAMS[k];
+function setParam(k, v, dflt = PARAMS[k]) {
+  if (v == null || v === "" || String(v) === String(dflt)) URLQ.delete(k); else URLQ.set(k, v);
+  const s = URLQ.toString();
+  try { history.replaceState(null, "", location.pathname + (s ? "?" + s : "") + location.hash); } catch (e) {}
+}
+const pick = (k, opts) => { const v = getParam(k); return opts.some(([o]) => o === v) ? v : PARAMS[k]; };
+
+/* ---- full screen ---- */
+function syncFs() {
+  document.querySelectorAll("[data-fs]").forEach(b => {
+    const box = $(b.dataset.fs), on = document.fullscreenElement === box || box.classList.contains("enlarged");
+    b.setAttribute("aria-pressed", on); b.title = b.ariaLabel = on ? "Exit full screen (Esc)" : "Full screen";
+  });
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-fs]"); if (!b) return;
+  const box = $(b.dataset.fs);
+  if (document.fullscreenElement === box) document.exitFullscreen();
+  else if (box.classList.contains("enlarged")) box.classList.remove("enlarged");
+  else if (box.requestFullscreen) box.requestFullscreen().catch(() => { box.classList.add("enlarged"); syncFs(); });
+  else box.classList.add("enlarged");
+  syncFs();
+});
+document.addEventListener("fullscreenchange", syncFs);
+document.addEventListener("keydown", e => { if (e.key === "Escape") { document.querySelectorAll(".enlarged").forEach(x => x.classList.remove("enlarged")); syncFs(); } });
+
+function banner(msg, kind) { $("banner").innerHTML = '<div class="banner ' + kind + '">' + esc(msg) + "</div>"; }
+
+async function loadData() {
+  const parts = await Promise.all(DATA_FILES.map(async f => {
+    const r = await fetch(f, {cache: "no-store"});
+    if (!r.ok) throw new Error("HTTP " + r.status + " fetching " + f);
+    const j = await r.json();
+    if (!j || typeof j !== "object" || Array.isArray(j)) throw new Error(f + " must be an object {generated_at, <block>: [rows]}");
+    if (!j.generated_at) throw new Error(f + " has no generated_at");
+    return j;
+  }));
+  return Object.assign({}, ...parts);
+}
+function seg2(id, opts, value, set) {
+  const draw = v => { $(id).innerHTML = opts.map(([k, l]) => '<button type="button" data-v="' + k + '" aria-pressed="' + (k === v) + '">' + l + "</button>").join(""); };
+  draw(value);
+  $(id).addEventListener("click", e => { const b = e.target.closest("[data-v]"); if (!b) return; set(b.dataset.v); draw(b.dataset.v); });
+}
+
+/* ---- state ---- */
+let D = null, C = {}, CC = {}, SHIFT = 364, T0 = 0, T1 = 0, TYPES = [], DEFAULT_TYPES = [], types = [];
+const REGION_OPTS = REGIONS.map(([r]) => [r, r]);
+let src = pick("src", SRC_OPTS), sregion = pick("sregion", REGION_OPTS), smode = pick("smode", MODE_OPTS),
+  sw = pick("sw", WINDOW_OPTS), shist = pick("shist", HIST_OPTS), qview = pick("qview", [["share"], ["yoy"]]);
+const charts = {}, hidden = {sh: new Set()};
+/* card has no item detail: every type counts; the e-receipt picks are kept for switching back */
+const card = () => src === "card";
+const effTypes = () => card() ? TYPES.map(([k]) => k) : types;
+const members = r => REGIONS.find(x => x[0] === r)[1].map(k => (card() ? CC : C)[k]);
+const base = () => card() ? "card" : "mailbox";
+const cache = new Map();
+
+/* prefix sums per country and series, so any trailing window is two lookups */
+function prep() {
+  D.countries.forEach(c => {
+    const t0 = Date.parse(c.start + "T00:00:00Z"), n = c.total.length, pre = {};
+    TYPES.map(([k]) => k).concat(["total"]).forEach(k => {
+      const p = new Float64Array(n + 1); for (let i = 0; i < n; i++) p[i + 1] = p[i] + ((c[k] || [])[i] || 0); pre[k] = p; });
+    C[c.country] = {t0, n, pop: c.pop, pre, end: Date.parse(c.end + "T00:00:00Z")};
+    if (c.card) {   // card: one Steam series (types summed by the card) and all card spend
+      const k = c.card, m = k.total.length, cp = {};
+      ["steam", "total"].forEach(f => { const q = new Float64Array(m + 1); for (let i = 0; i < m; i++) q[i + 1] = q[i] + (k[f][i] || 0); cp[f] = q; });
+      CC[c.country] = {t0: Date.parse(k.start + "T00:00:00Z"), n: m, pop: c.pop, pre: cp, end: Date.parse(k.end + "T00:00:00Z"), card: true};
+    }
+  });
+  T0 = Math.min(...Object.values(C).map(c => c.t0)); T1 = Math.max(...Object.values(C).map(c => c.end));
+}
+/* trailing-window sums for one country ending on day t; null outside its data */
+function sums(c, t, w, ts) {
+  const i = Math.round((t - c.t0) / DAY); if (i - w + 1 < 0 || i >= c.n) return null;
+  const s = k => c.pre[k][i + 1] - c.pre[k][i - w + 1];
+  const steam = c.card ? s("steam") : ts.reduce((a, k) => a + s(k), 0), total = s("total");
+  return total > 0 ? {steam, total, share: steam / total} : null;
+}
+/* region series for a window and set of Steam spend types: share, share 364 days earlier, and population-weighted Steam / mailbox spend Y/Y */
+function region(r, w, ts) {
+  const key = [src, r, w, ts.join(",")].join("|"); if (cache.has(key)) return cache.get(key);
+  const cs = members(r), wsum = cs.reduce((a, c) => a + c.pop, 0);
+  const end = Math.min(...cs.map(c => c.end)), out = [];
+  for (let t = T0; t <= end; t += DAY) {
+    const now = cs.map(c => sums(c, t, w, ts)), ly = cs.map(c => sums(c, t - SHIFT * DAY, w, ts));
+    if (now.some(v => !v)) continue;
+    const share = now.reduce((a, v, i) => a + v.share * cs[i].pop, 0) / wsum;
+    let share_ly = null, steam_yoy = null, total_yoy = null;
+    if (ly.every(v => v)) {
+      share_ly = ly.reduce((a, v, i) => a + v.share * cs[i].pop, 0) / wsum;
+      steam_yoy = now.reduce((a, v, i) => a + (ly[i].steam > 0 ? v.steam / ly[i].steam - 1 : 0) * cs[i].pop, 0) / wsum;
+      total_yoy = now.reduce((a, v, i) => a + (v.total / ly[i].total - 1) * cs[i].pop, 0) / wsum;
+    }
+    out.push({t, share, share_ly, share_yoy: share_ly ? share / share_ly - 1 : null, steam_yoy, total_yoy});
+  }
+  cache.set(key, out); return out;
+}
+const typeName = k => TYPES.find(t => t[0] === k)[1];
+function typesName() {
+  if (card()) return "all Steam card charges";
+  if (types.length === TYPES.length) return "all Steam spend";
+  const missing = TYPES.filter(([k]) => !types.includes(k));
+  if (types.length >= TYPES.length - 2) return "Steam spend excl. " + missing.map(([k, l]) => l.toLowerCase()).join(" and ");
+  return types.map(typeName).join(" + ");
+}
+
+/* ---- chart options ---- */
+function baseOptions(t, hiddenSet, xmin, ylabel, yfmt, tipfmt) {
+  return {responsive: true, maintainAspectRatio: false, animation: false, parsing: false, normalized: true,
+    interaction: {mode: "nearest", axis: "x", intersect: false},
+    plugins: {
+      legend: {labels: {color: t.axis, usePointStyle: true, boxWidth: 8, boxHeight: 8},
+        onClick(e, item, legend) { Chart.defaults.plugins.legend.onClick.call(this, e, item, legend);
+          const ds = legend.chart.data.datasets[item.datasetIndex];
+          hiddenSet[legend.chart.isDatasetVisible(item.datasetIndex) ? "delete" : "add"](ds.key || ds.label); },
+        onHover: e => { e.native.target.style.cursor = "pointer"; }, onLeave: e => { e.native.target.style.cursor = ""; }},
+      tooltip: {backgroundColor: t.card, titleColor: t.text, bodyColor: t.text, borderColor: t.line, borderWidth: 1, cornerRadius: 10, padding: 10,
+        usePointStyle: true, mode: "x", filter: i => isNum(i.parsed.y), itemSort: (a, b) => b.parsed.y - a.parsed.y,
+        callbacks: {title: i => nice(i[0].parsed.x), label: c => " " + c.dataset.label + ": " + tipfmt(c.parsed.y)}}},
+    scales: {x: {type: "linear", min: xmin, max: T1, ticks: {color: t.axis, maxTicksLimit: 10, callback: v => new Date(v).toLocaleDateString("en-GB", {month: "short", year: "2-digit", timeZone: "UTC"})},
+               grid: {display: false}, border: {color: t.grid}},
+             y: {ticks: {color: t.axis, callback: yfmt}, grid: {color: t.grid}, border: {display: false},
+                 title: {display: true, text: ylabel, color: t.axis}}}};
+}
+const applyHidden = (sets, h) => sets.forEach(s => { s.hidden = h.has(s.key || s.label); });
+const zeroLine = {id: "zeroLine", beforeDatasetsDraw(chart) {
+  const {ctx, chartArea: a, scales: {y}} = chart, py = y.getPixelForValue(0); if (py < a.top || py > a.bottom) return;
+  ctx.save(); ctx.strokeStyle = theme().axis; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(a.left, py); ctx.lineTo(a.right, py); ctx.stroke(); ctx.restore();
+}};
+const line = (label, data, colour, width = 1.6, extra = {}) => ({key: label, label, data, borderColor: colour, backgroundColor: colour,
+  borderWidth: width, pointRadius: 0, pointHoverRadius: 3, tension: 0, spanGaps: false, ...extra});
+const winName = w => w === "1" ? "daily" : "trailing " + w + " days";
+
+/* ---- share chart: one line per year on a Jan-Dec axis; year k back is shifted forward k x 364 days ---- */
+function renderShare() {
+  if (!window.Chart) return;
+  if (charts.sh) charts.sh.destroy();
+  const t = theme(), w = Number(sw), yoy = smode === "yoy", s = region(sregion, w, effTypes());
+  const y1 = new Date(s[s.length - 1].t).getUTCFullYear(), xs = Date.UTC(y1, 0, 1), xe = Date.UTC(y1, 11, 31), floor = yoy ? YOY_FROM : SHOW_FROM;
+  const colours = [t.text, t.series[0], t.series[5], t.series[1], t.series[2]];
+  const sets = [];
+  for (let k = 0; k < Number(shist); k++) {
+    const pts = [];
+    s.forEach(p => { const x = p.t + k * SHIFT * DAY, v = yoy ? p.share_yoy : p.share;
+      if (p.t >= floor && x >= xs && x <= xe && isNum(v)) pts.push({x, y: v * 100, t: p.t}); });
+    if (pts.length) sets.push(line(String(y1 - k), pts, colours[k], k === 0 ? 2.4 : 1.5));
+  }
+  applyHidden(sets, hidden.sh);
+  const o = yoy ? baseOptions(t, hidden.sh, xs, "Y/Y change in share", v => fmt(v, 0) + "%", v => (v > 0 ? "+" : "") + fmt(v, 1) + "%")
+                : baseOptions(t, hidden.sh, xs, "% of " + base() + " spend", v => fmt(v, 2) + "%", v => fmt(v, 3) + "%");
+  const months = Array.from({length: 12}, (_, m) => Date.UTC(y1, m, 1));
+  Object.assign(o.scales.x, {max: xe, afterBuildTicks: ax => { ax.ticks = months.map(value => ({value})); },
+    ticks: {...o.scales.x.ticks, autoSkip: false, callback: v => new Date(v).toLocaleDateString("en-GB", {month: "short", timeZone: "UTC"})}});
+  o.plugins.tooltip.itemSort = null;
+  o.plugins.tooltip.callbacks.title = () => "";
+  const tip = o.plugins.tooltip.callbacks.label;
+  o.plugins.tooltip.callbacks.label = c => tip(c) + "  (" + nice(c.raw.t) + ")";
+  if (!yoy) o.scales.y.beginAtZero = true;
+  charts.sh = new Chart($("sh-chart"), {type: "line", data: {datasets: sets}, options: o, plugins: yoy ? [zeroLine] : []});
+  const p = s[s.length - 1];
+  $("sh-title").textContent = "Steam share of " + base() + " spend, by year";
+  $("sh-lede").innerHTML = REGION_NAME[sregion] + ", " + esc(typesName()) + ", " + winName(sw) + " to " + nice(p.t) + ": share <b>" + fmt(p.share * 100, 3) +
+    "%</b> vs " + fmt(p.share_ly * 100, 3) + "% 364 days earlier, <b>" + pct(p.share_yoy) + " Y/Y</b>.";
+}
+
+/* ---- calendar quarters ---- */
+function quarters() {
+  const out = {};
+  const ts = effTypes();
+  REGIONS.forEach(([r]) => {
+    const cs = members(r), wsum = cs.reduce((a, c) => a + c.pop, 0), end = Math.min(...cs.map(c => c.end));
+    for (let q = Date.UTC(2021, 0, 1); q <= end; q = Date.UTC(new Date(q).getUTCFullYear(), new Date(q).getUTCMonth() + 3, 1)) {
+      const qEnd = Math.min(Date.UTC(new Date(q).getUTCFullYear(), new Date(q).getUTCMonth() + 3, 1) - DAY, end), n = Math.round((qEnd - q) / DAY) + 1;
+      const now = cs.map(c => sums(c, qEnd, n, ts)), ly = cs.map(c => sums(c, qEnd - SHIFT * DAY, n, ts));
+      if (now.some(v => !v)) continue;
+      const share = now.reduce((a, v, i) => a + v.share * cs[i].pop, 0) / wsum;
+      const share_ly = ly.every(v => v) ? ly.reduce((a, v, i) => a + v.share * cs[i].pop, 0) / wsum : null;
+      const qd = new Date(q), label = qd.getUTCFullYear() + " Q" + (qd.getUTCMonth() / 3 + 1);
+      (out[label] = out[label] || {label, q, partial: false, end: qEnd})[r] = {share, yoy: share_ly ? share / share_ly - 1 : null};
+      if (qEnd < Date.UTC(qd.getUTCFullYear(), qd.getUTCMonth() + 3, 1) - DAY) { out[label].partial = true; out[label].end = qEnd; }
+    }
+  });
+  return Object.values(out).sort((a, b) => b.q - a.q);
+}
+function renderTable() {
+  const rows = quarters(), cols = REGIONS.map(([r]) => r);
+  $("qt").querySelector("thead").innerHTML = "<tr><th>Quarter</th>" + cols.map(r => '<th class="num">' + REGION_NAME[r] + "</th>").join("") + "</tr>";
+  $("qt").querySelector("tbody").innerHTML = rows.map(row => '<tr class="' + (row.partial ? "partial" : "") + '"><td>' + row.label +
+    (row.partial ? " (to date)" : "") + "</td>" + cols.map(r => { const v = row[r];
+      if (!v) return '<td class="num na">n/a</td>';
+      if (qview === "share") return '<td class="num">' + fmt(v.share * 100, 3) + "%</td>";
+      return '<td class="num ' + (v.yoy > 0 ? "up" : v.yoy < 0 ? "down" : "") + '">' + pct(v.yoy) + "</td>"; }).join("") + "</tr>").join("");
+}
+
+/* tick boxes, each with its share of all Steam receipt spend over the last 364 days in the share card's region (population-weighted) */
+function drawTypes() {
+  const cs = REGIONS.find(x => x[0] === sregion)[1].map(k => C[k]), wsum = cs.reduce((a, c) => a + c.pop, 0), end = Math.min(...cs.map(c => c.end));
+  const all = TYPES.map(([k]) => k), mix = {};
+  all.forEach(k => { mix[k] = cs.reduce((a, c) => { const x = sums(c, end, 364, [k]), y = sums(c, end, 364, all);
+    return a + (x && y && y.steam > 0 ? x.steam / y.steam : 0) * c.pop; }, 0) / wsum; });
+  const on = effTypes(), lock = card();
+  $("pg-types").classList.toggle("locked", lock);
+  $("pg-types").title = lock ? "Card data has no item detail: every Steam card charge counts" : "";
+  $("pg-types").innerHTML = TYPES.map(([k, l]) => '<label><input type="checkbox" data-t="' + k + '"' + (on.includes(k) ? " checked" : "") + (lock ? " disabled" : "") + "> " +
+    esc(l) + ' <span class="mix">' + fmt(mix[k] * 100, mix[k] < 0.095 ? 1 : 0) + "%</span></label>").join("") +
+    '<span class="links"><button type="button" data-preset="default">Default</button> · <button type="button" data-preset="all">All</button></span>';
+  $("pg-mix").textContent = lock
+    ? "Steam spend: card sees every charge to Steam, so all types count, wallet top-ups included; purchases paid from wallet balance are not seen. Card has no item detail, so types cannot be switched off. % = each type's share of e-receipt Steam spend, for reference."
+    : "Steam spend: % = each type's share of " + REGION_NAME[sregion] + " Steam receipt spend, last 364 days to " + nice(end) +
+    ". Wallet top-ups are off by default: the purchases they fund send their own receipts, so including them double counts.";
+}
+function setTypes(ts) {
+  types = TYPES.map(([k]) => k).filter(k => ts.includes(k));
+  setParam("types", types.join(","), DEFAULT_TYPES.join(","));
+  drawTypes(); renderNote(); renderShare(); renderTable();
+}
+
+function renderNote() {
+  $("pg-note").textContent = card()
+    ? "Card spend: US = Consumer Edge MU aggregate (projected US card spend; Steam = CER brand STEAM over all industries), from Apr 2021. " +
+      "EU5 = Fable consumer card payments (Steam by card descriptor), from Jan 2020. The last 10 days of each card series are left out while they settle. " +
+      "Card totals include groceries, fuel and bills, so card shares (~0.05-0.1%) sit below mailbox shares; read the Y/Y."
+    : "Mailbox spend: every priced receipt line, all merchants (US excludes Amazon).";
+}
+function renderAll() { drawTypes(); renderNote(); renderShare(); renderTable(); }
+
+(async () => {
+  try {
+    D = await loadData();
+    SHIFT = D.shift || 364;
+    TYPES = D.types; DEFAULT_TYPES = D.default_types;
+    const want = (getParam("types") || DEFAULT_TYPES.join(",")).split(",").filter(k => TYPES.some(t => t[0] === k));
+    types = TYPES.map(([k]) => k).filter(k => (want.length ? want : DEFAULT_TYPES).includes(k));
+    prep();
+    const ends = Object.fromEntries(D.countries.map(c => [c.country, c.end]));
+    const fox = D.countries.filter(c => c.country !== "US").map(c => c.end).sort()[0];
+    const cardEnd = k => D.countries.filter(c => c.card && k(c.country)).map(c => c.card.end).sort()[0];
+    $("stamp").textContent = "Data as of " + new Date(Date.parse(D.generated_at)).toISOString().replace("T", " ").slice(0, 16) +
+      " UTC · Slice (US) complete to " + nice(Date.parse(ends.US)) + "; Fox (EU5) to " + nice(Date.parse(fox)) +
+      " · Card: Consumer Edge (US) to " + nice(Date.parse(cardEnd(c => c === "US"))) + "; Fable (EU5) to " + nice(Date.parse(cardEnd(c => c !== "US")));
+    $("pg-types").addEventListener("change", e => {
+      const box = e.target.closest("[data-t]"); if (!box) return;
+      const next = box.checked ? types.concat(box.dataset.t) : types.filter(k => k !== box.dataset.t);
+      if (!next.length) { box.checked = true; return; }   // keep at least one type
+      setTypes(next);
+    });
+    $("pg-types").addEventListener("click", e => { const b = e.target.closest("[data-preset]"); if (!b) return;
+      setTypes(b.dataset.preset === "all" ? TYPES.map(([k]) => k) : DEFAULT_TYPES); });
+    seg2("pg-src", SRC_OPTS, src, v => { src = v; setParam("src", v); renderAll(); });
+    seg2("sh-region", REGION_OPTS, sregion, v => { sregion = v; setParam("sregion", v); drawTypes(); renderShare(); });
+    seg2("sh-mode", MODE_OPTS, smode, v => { smode = v; setParam("smode", v); renderShare(); });
+    seg2("sh-window", WINDOW_OPTS, sw, v => { sw = v; setParam("sw", v); renderShare(); });
+    seg2("sh-hist", HIST_OPTS, shist, v => { shist = v; setParam("shist", v); renderShare(); });
+    seg2("qt-view", [["yoy", "Y/Y"], ["share", "Share"]], qview, v => { qview = v; setParam("qview", v); renderTable(); });
+    renderAll();
+    onThemeChange(() => { renderShare(); });
+    if (!window.Chart) banner("The chart library could not load; the quarter table below still shows the figures.", "bad");
+  } catch (err) {
+    banner("Could not load or read the data: " + err.message, "bad");
+    $("stamp").textContent = "Data as of unknown";
+  }
+})();
+</script>
+</body>
+</html>
