@@ -110,7 +110,7 @@ tr.partial td{color:var(--muted)}
 
 <script>
 "use strict";
-const DATA_FILES = ["steam.json"];
+const DATA_FILES = ["receipts.json"];
 const CARD_FILE = "card.json";   // optional: without it the page shows e-receipts only and Card is disabled
 const DAY = 864e5;
 const REGIONS = [["US", ["US"]], ["EU5", ["UK", "DE", "FR", "IT", "ES"]], ["Combined", ["US", "UK", "DE", "FR", "IT", "ES"]],
@@ -217,7 +217,7 @@ const cache = new Map();
 
 /* prefix sums per country and series, so any trailing window is two lookups */
 function prep() {
-  D.countries.forEach(c => {
+  D.receipts.forEach(c => {
     const t0 = Date.parse(c.start + "T00:00:00Z"), n = c.total.length, pre = {};
     TYPES.map(([k]) => k).concat(["total"]).forEach(k => {
       const p = new Float64Array(n + 1); for (let i = 0; i < n; i++) p[i + 1] = p[i] + ((c[k] || [])[i] || 0); pre[k] = p; });
@@ -396,8 +396,8 @@ function renderAll() { drawTypes(); renderNote(); renderShare(); renderTable(); 
     const want = (getParam("types") || DEFAULT_TYPES.join(",")).split(",").filter(k => TYPES.some(t => t[0] === k));
     types = TYPES.map(([k]) => k).filter(k => (want.length ? want : DEFAULT_TYPES).includes(k));
     prep();
-    const ends = Object.fromEntries(D.countries.map(c => [c.country, c.end]));
-    const fox = D.countries.filter(c => c.country !== "US").map(c => c.end).sort()[0];
+    const ends = Object.fromEntries(D.receipts.map(c => [c.country, c.end]));
+    const fox = D.receipts.filter(c => c.country !== "US").map(c => c.end).sort()[0];
     const cardEnd = k => CARD.card.filter(c => k(c.country)).map(c => c.end).sort()[0];
     $("stamp").textContent = "Data as of " + new Date(Date.parse(D.generated_at)).toISOString().replace("T", " ").slice(0, 16) +
       " UTC · Slice (US) complete to " + nice(Date.parse(ends.US)) + "; Fox (EU5) to " + nice(Date.parse(fox)) +

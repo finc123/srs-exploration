@@ -438,7 +438,7 @@ md(r"""
 ## 5. Web app
 
 **Method**
-- **Data files.** `app/steam-share/card.json`: per country, daily Steam and total card spend (section below). `app/steam-share/steam.json`: per country, daily arrays of Steam spend for each of the seven types and mailbox
+- **Data files.** `app/steam-share/card.json`: per country, daily Steam and total card spend (section below). `app/steam-share/receipts.json`: per country, daily arrays of Steam spend for each of the seven types and mailbox
   spend (all merchants; the fixed cohort is not exported: section 4.1 shows it moves quarterly share Y/Y by at most 2.4pp) (local currency) from 1 Jan 2020 to the country's last complete day, plus population weights. The page computes windows, shares,
   regional weights, Y/Y and the quarter table in the browser, the same way as sections 2–4.
 - **Card source.** The page's Source toggle switches the share to card data: Steam card charges ÷ all card spend, per country.
@@ -450,7 +450,7 @@ md(r"""
   - Card sees every charge to Steam, wallet top-ups included, but not purchases paid from wallet balance, and has no item detail, so
     spend types and the fixed merchant cohort do not apply.
 - **Check.** The last cell recomputes one value the way the page does and compares it with section 2.
-- **Publishing.** Upload `steam.json`, `index.html` and `index.html.srsdoc` to `s3://srsinvest-apps/s3-browser/personal/fintan-creedon/steam-share/`
+- **Publishing.** Upload `receipts.json`, `card.json`, `index.html` and `index.html.srsdoc` to `s3://srsinvest-apps/s3-browser/personal/fintan-creedon/steam-share/`
   with the SRS MCP `s3` tool (`upload_large`, with `if_match` once the files exist).
 - **Live page:** https://apps.srsinvest.com/s3-browser/personal/fintan-creedon/steam-share/index.html
 """)
@@ -478,11 +478,11 @@ for c in COUNTRY_POP:
 print("card:", {c["country"]: (c["start"], c["end"]) for c in card_rows})
 
 payload = {"generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "shift": SHIFT,
-           "types": [[t, TYPE_NAME[t]] for t in TYPES], "default_types": DEFAULT, "countries": countries}
-(APP / "steam.json").write_text(json.dumps(payload, separators=(",", ":")))
+           "types": [[t, TYPE_NAME[t]] for t in TYPES], "default_types": DEFAULT, "receipts": countries}
+(APP / "receipts.json").write_text(json.dumps(payload, separators=(",", ":")))
 # card is its own file, as the srs steam job writes it (the page loads it separately and disables Card without it)
 (APP / "card.json").write_text(json.dumps({"generated_at": payload["generated_at"], "card": card_rows}, separators=(",", ":")))
-print(f"steam.json: {(APP / 'steam.json').stat().st_size / 1e3:.0f} KB; ends", {c["country"]: c["end"] for c in countries})
+print(f"receipts.json: {(APP / 'receipts.json').stat().st_size / 1e3:.0f} KB; ends", {c["country"]: c["end"] for c in countries})
 
 # check: Combined 28-day share Y/Y on the last Combined day, recomputed from the JSON arrays as the page does
 day = REGION_END["Combined"]
