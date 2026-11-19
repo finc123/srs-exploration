@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Steam</title>
+<title>Steam Trends</title>
 <!-- Fallback only (theme.css unreachable). Declared first, in a lower cascade layer, so theme.css always wins. -->
 <style>
 @layer srs-fallback{
@@ -62,14 +62,13 @@ tr.partial td{color:var(--muted)}
 <body>
 <header class="page-header"><div class="wrap">
   <div class="bar">
-    <h1>Steam</h1>
+    <h1>Steam Trends</h1>
     <div class="actions">
       <div class="seg" role="group" aria-label="Theme" data-theme-switch>
         <button type="button" data-theme-choice="auto">Auto</button><button type="button" data-theme-choice="light">Light</button><button type="button" data-theme-choice="dark">Dark</button>
       </div>
     </div>
   </div>
-  <p class="sub">What share of e-receipt spend goes to Steam, and how is it trending Y/Y? NIQ Slice (US) and Fox (UK, Germany, France, Italy, Spain), with card data (Consumer Edge US, Fable EU5) as a check.</p>
   <div class="stamp" id="stamp">Data as of ...</div>
   <div id="banner" role="status"></div>
 </div></header>
@@ -90,11 +89,8 @@ tr.partial td{color:var(--muted)}
       <span class="lbl">Trailing days</span><span class="seg" role="group" aria-label="Trailing days" id="sh-window"></span>
       <span class="lbl">History</span><span class="seg" role="group" aria-label="History" id="sh-hist"></span>
     </div>
-    <p class="lede" id="sh-lede"></p>
     <div class="chartbox tall"><canvas id="sh-chart" role="img" aria-label="Steam share of spend, one line per year"></canvas></div>
-    <p class="stamp">One line per year on a Jan–Dec axis. Earlier years are shifted forward by 364 days per year so weekdays line up: the gap between two adjacent lines in Nominal is the Y/Y. Y/Y = share over the trailing days ÷ share over the same days 364 days earlier − 1. EU5 and Combined are population-weighted averages of the country shares.</p>
-    <p class="stamp" id="pg-mix"></p>
-    <p class="stamp" id="pg-note"></p>
+    <p class="stamp">E-Receipt data shows total Steam spend, including category-level breakdown. Credit Card data shows total Steam spend excluding purchases paid from wallet balance, and is unable to delineate between spend into different categories.</p>
   </section>
 
   <section class="card" id="qt-card" data-srs-section="quarters">
@@ -113,15 +109,15 @@ tr.partial td{color:var(--muted)}
 const DATA_FILES = ["receipts.json"];
 const CARD_FILE = "card.json";   // optional: without it the page shows e-receipts only and Card is disabled
 const DAY = 864e5;
-const REGIONS = [["US", ["US"]], ["EU5", ["UK", "DE", "FR", "IT", "ES"]], ["Combined", ["US", "UK", "DE", "FR", "IT", "ES"]],
+const REGIONS = [["Combined", ["US", "UK", "DE", "FR", "IT", "ES"]], ["US", ["US"]], ["EU5", ["UK", "DE", "FR", "IT", "ES"]],
   ["UK", ["UK"]], ["DE", ["DE"]], ["FR", ["FR"]], ["IT", ["IT"]], ["ES", ["ES"]]];
-const REGION_NAME = {US: "US", EU5: "EU5", Combined: "Combined", UK: "UK", DE: "Germany", FR: "France", IT: "Italy", ES: "Spain"};
+const REGION_NAME = {US: "US", EU5: "EU5", Combined: "US + EU5", UK: "UK", DE: "Germany", FR: "France", IT: "Italy", ES: "Spain"};
 const MODE_OPTS = [["nominal", "Nominal"], ["yoy", "Y/Y"]];
 const WINDOW_OPTS = [["1", "1"], ["7", "7"], ["28", "28"], ["91", "91"]];
 const HIST_OPTS = [["3", "3 years"], ["5", "5 years"]];
 const SHOW_FROM = Date.UTC(2021, 0, 1), YOY_FROM = Date.UTC(2022, 0, 1);   // Fox had ~50k panelists before 2021
 const SRC_OPTS = [["receipt", "E-receipt"], ["card", "Card"]];
-const PARAMS = {src: "receipt", types: "", sregion: "US", smode: "nominal", sw: "28", shist: "3", qview: "yoy"};   // types "" = the data's default
+const PARAMS = {src: "receipt", types: "", sregion: "Combined", smode: "nominal", sw: "28", shist: "3", qview: "yoy"};   // types "" = the data's default
 
 /* ---- helpers ---- */
 const $ = id => document.getElementById(id);
@@ -204,7 +200,7 @@ async function loadCard() {
 
 /* ---- state ---- */
 let D = null, CARD = null, C = {}, CC = {}, SHIFT = 364, T0 = 0, T1 = 0, TYPES = [], DEFAULT_TYPES = [], types = [];
-const REGION_OPTS = REGIONS.map(([r]) => [r, r]);
+const REGION_OPTS = REGIONS.map(([r]) => [r, r === "Combined" ? REGION_NAME[r] : r]);
 let src = pick("src", SRC_OPTS), sregion = pick("sregion", REGION_OPTS), smode = pick("smode", MODE_OPTS),
   sw = pick("sw", WINDOW_OPTS), shist = pick("shist", HIST_OPTS), qview = pick("qview", [["share"], ["yoy"]]);
 const charts = {}, hidden = {sh: new Set()};
@@ -321,8 +317,6 @@ function renderShare() {
   charts.sh = new Chart($("sh-chart"), {type: "line", data: {datasets: sets}, options: o, plugins: yoy ? [zeroLine] : []});
   const p = s[s.length - 1];
   $("sh-title").textContent = "Steam share of " + base() + " spend, by year";
-  $("sh-lede").innerHTML = REGION_NAME[sregion] + ", " + esc(typesName()) + ", " + winName(sw) + " to " + nice(p.t) + ": share <b>" + fmt(p.share * 100, 3) +
-    "%</b> vs " + fmt(p.share_ly * 100, 3) + "% 364 days earlier, <b>" + pct(p.share_yoy) + " Y/Y</b>.";
 }
 
 /* ---- calendar quarters ---- */
@@ -366,25 +360,14 @@ function drawTypes() {
   $("pg-types").innerHTML = TYPES.map(([k, l]) => '<label><input type="checkbox" data-t="' + k + '"' + (on.includes(k) ? " checked" : "") + (lock ? " disabled" : "") + "> " +
     esc(l) + ' <span class="mix">' + fmt(mix[k] * 100, mix[k] < 0.095 ? 1 : 0) + "%</span></label>").join("") +
     '<span class="links"><button type="button" data-preset="default">Default</button> · <button type="button" data-preset="all">All</button></span>';
-  $("pg-mix").textContent = lock
-    ? "Steam spend: card sees every charge to Steam, so all types count, wallet top-ups included; purchases paid from wallet balance are not seen. Card has no item detail, so types cannot be switched off. % = each type's share of e-receipt Steam spend, for reference."
-    : "Steam spend: % = each type's share of " + REGION_NAME[sregion] + " Steam receipt spend, last 364 days to " + nice(end) +
-    ". Wallet top-ups are off by default: the purchases they fund send their own receipts, so including them double counts.";
 }
 function setTypes(ts) {
   types = TYPES.map(([k]) => k).filter(k => ts.includes(k));
   setParam("types", types.join(","), DEFAULT_TYPES.join(","));
-  drawTypes(); renderNote(); renderShare(); renderTable();
+  drawTypes(); renderShare(); renderTable();
 }
 
-function renderNote() {
-  $("pg-note").textContent = card()
-    ? "Card spend: US = Consumer Edge MU aggregate (projected US card spend; Steam = CER brand STEAM over all industries), from Apr 2021. " +
-      "EU5 = Fable consumer card payments (Steam by card descriptor), from Jan 2020. The last 10 days of each card series are left out while they settle. " +
-      "Card totals include groceries, fuel and bills, so card shares (~0.05-0.1%) sit below mailbox shares; read the Y/Y."
-    : "Mailbox spend: every priced receipt line, all merchants (US excludes Amazon).";
-}
-function renderAll() { drawTypes(); renderNote(); renderShare(); renderTable(); }
+function renderAll() { drawTypes(); renderShare(); renderTable(); }
 
 (async () => {
   try {
