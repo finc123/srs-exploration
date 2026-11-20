@@ -99,6 +99,20 @@ tr.partial td{color:var(--muted)}
     <div class="scroll"><table id="qt"><thead></thead><tbody></tbody></table></div>
     <p class="stamp">Share over each quarter's days; Y/Y against the same days shifted back 364 days. Uses the source and Steam spend types selected in the chart above. The current quarter is to date (grey): each column runs to its own panel's last complete day (see the stamp at the top).</p>
   </section>
+
+  <section class="card" id="pl-card" data-srs-section="players">
+    <div class="tools"><h2 id="pl-title">Steam players, top 1,000 games</h2>
+      <div class="ctl" data-srs-hide>
+        <span class="seg" role="group" aria-label="Games" id="pl-games"></span>
+        <button type="button" class="btn" data-fs="pl-card" aria-label="Full screen" title="Full screen">&#x2922;</button></div></div>
+    <div class="ctl adj" data-srs-hide>
+      <span class="seg" role="group" aria-label="View" id="pl-mode"></span>
+      <span class="lbl">History</span><span class="seg" role="group" aria-label="History" id="pl-hist"></span>
+    </div>
+    <div class="chartbox tall"><canvas id="pl-chart" role="img" aria-label="Steam players by month"></canvas></div>
+    <p class="stamp">Players = the sum of each game's monthly peak concurrent players (SteamCharts), for today's top 1,000 or top 100 Steam games by current players, software excluded. These are today's top games, so earlier years hold fewer of them and growth is overstated, more so for the top 1,000. The current month is to date.</p>
+    <p class="stamp" id="pl-live"></p>
+  </section>
 </main>
 <footer class="wrap">
   <a href="./index.html.srsdoc">Source and method: see the documentation</a>
@@ -108,6 +122,7 @@ tr.partial td{color:var(--muted)}
 "use strict";
 const DATA_FILES = ["receipts.json"];
 const CARD_FILE = "card.json";   // optional: without it the page shows e-receipts only and Card is disabled
+const PLAYERS_FILE = "players.json";   // optional: without it the players card is hidden
 const DAY = 864e5;
 const REGIONS = [["Combined", ["US", "UK", "DE", "FR", "IT", "ES"]], ["US", ["US"]], ["EU5", ["UK", "DE", "FR", "IT", "ES"]],
   ["UK", ["UK"]], ["DE", ["DE"]], ["FR", ["FR"]], ["IT", ["IT"]], ["ES", ["ES"]]];
@@ -117,7 +132,10 @@ const WINDOW_OPTS = [["1", "1"], ["7", "7"], ["28", "28"], ["91", "91"]];
 const HIST_OPTS = [["3", "3 years"], ["5", "5 years"]];
 const SHOW_FROM = Date.UTC(2021, 0, 1), YOY_FROM = Date.UTC(2022, 0, 1);   // Fox had ~50k panelists before 2021
 const SRC_OPTS = [["receipt", "E-receipt"], ["card", "Card"]];
-const PARAMS = {src: "receipt", types: "", sregion: "Combined", smode: "nominal", sw: "28", shist: "3", qview: "yoy"};   // types "" = the data's default
+const PARAMS = {src: "receipt", types: "", sregion: "Combined", smode: "nominal", sw: "28", shist: "3", qview: "yoy",
+  pgames: "top1000", pmode: "nominal", phist: "10"};
+const PGAMES_OPTS = [["top1000", "Top 1,000"], ["top100", "Top 100"]];
+const PHIST_OPTS = [["3", "3 years"], ["5", "5 years"], ["10", "10 years"], ["all", "All"]];   // types "" = the data's default
 
 /* ---- helpers ---- */
 const $ = id => document.getElementById(id);
@@ -198,12 +216,23 @@ async function loadCard() {
   } catch (e) { return null; }
 }
 
+/* the players file, or null when it is missing or unreadable (the players card is then hidden) */
+async function loadPlayers() {
+  try {
+    const r = await fetch(PLAYERS_FILE, {cache: "no-store"});
+    if (!r.ok) return null;
+    const j = await r.json();
+    return j && j.players && Array.isArray(j.players.top1000) && j.players.top1000.length ? j : null;
+  } catch (e) { return null; }
+}
+
 /* ---- state ---- */
-let D = null, CARD = null, C = {}, CC = {}, SHIFT = 364, T0 = 0, T1 = 0, TYPES = [], DEFAULT_TYPES = [], types = [];
+let D = null, CARD = null, PL = null, C = {}, CC = {}, SHIFT = 364, T0 = 0, T1 = 0, TYPES = [], DEFAULT_TYPES = [], types = [];
 const REGION_OPTS = REGIONS.map(([r]) => [r, r === "Combined" ? REGION_NAME[r] : r]);
 let src = pick("src", SRC_OPTS), sregion = pick("sregion", REGION_OPTS), smode = pick("smode", MODE_OPTS),
-  sw = pick("sw", WINDOW_OPTS), shist = pick("shist", HIST_OPTS), qview = pick("qview", [["share"], ["yoy"]]);
-const charts = {}, hidden = {sh: new Set()};
+  sw = pick("sw", WINDOW_OPTS), shist = pick("shist", HIST_OPTS), qview = pick("qview", [["share"], ["yoy"]]),
+  pgames = pick("pgames", PGAMES_OPTS), pmode = pick("pmode", MODE_OPTS), phist = pick("phist", PHIST_OPTS);
+const charts = {}, hidden = {sh: new Set(), pl: new Set()};
 /* card has no item detail: every type counts; the e-receipt picks are kept for switching back */
 const card = () => src === "card";
 const effTypes = () => card() ? TYPES.map(([k]) => k) : types;
@@ -319,6 +348,37 @@ function renderShare() {
   $("sh-title").textContent = "Steam share of " + base() + " spend, by year";
 }
 
+/* ---- players: one point per month; the current month is to date (hollow point, dashed segment, grey bar) ---- */
+function renderPlayers() {
+  if (!window.Chart || !PL) return;
+  if (charts.pl) charts.pl.destroy();
+  const t = theme(), P = PL.players, v = P[pgames], yoy = pmode === "yoy", n = v.length;
+  const s0 = Date.parse(P.start + "T00:00:00Z"), y0 = new Date(s0).getUTCFullYear(), m0 = new Date(s0).getUTCMonth();
+  const month = i => Date.UTC(y0, m0 + i, 1);
+  const last = month(n - 1), from = phist === "all" ? s0 : Date.UTC(new Date(last).getUTCFullYear() - Number(phist), new Date(last).getUTCMonth(), 1);
+  const pts = [];
+  for (let i = 0; i < n; i++) {
+    const y = yoy ? (i >= 12 && v[i - 12] > 0 ? (v[i] / v[i - 12] - 1) * 100 : null) : v[i] / 1e6;
+    if (month(i) >= from && isNum(y)) pts.push({x: month(i), y, i});
+  }
+  const colour = pgames === "top100" ? t.series[1] : t.series[0], partial = c => c.p1 && c.p1.raw.i === n - 1;
+  const ds = yoy
+    ? {key: "yoy", label: "Y/Y", type: "bar", data: pts, backgroundColor: pts.map(p => p.i === n - 1 ? t.muted : colour), barPercentage: 1, categoryPercentage: 0.9}
+    : line(PGAMES_OPTS.find(o => o[0] === pgames)[1], pts, colour, 2, {pointRadius: pts.map(p => p.i === n - 1 ? 3 : 0), pointBackgroundColor: t.card,
+        segment: {borderDash: c => partial(c) ? [4, 4] : undefined}});
+  const o = yoy ? baseOptions(t, hidden.pl, from, "Y/Y change", x => fmt(x, 0) + "%", x => (x > 0 ? "+" : "") + fmt(x, 1) + "%")
+                : baseOptions(t, hidden.pl, from, "Players (millions)", x => fmt(x, 0) + "m", x => fmt(x, 2) + "m");
+  Object.assign(o.scales.x, {max: last + 15 * DAY});
+  o.plugins.legend.display = false;
+  o.plugins.tooltip.callbacks.title = i => { const p = i[0].raw, d = new Date(p.x).toLocaleDateString("en-GB", {month: "short", year: "numeric", timeZone: "UTC"});
+    return p.i === n - 1 ? d + " (to " + nice(Date.parse(P.end + "T00:00:00Z")) + ")" : d; };
+  o.plugins.tooltip.callbacks.label = c => { const p = c.raw;
+    return " " + (yoy ? pct(p.y / 100) + " Y/Y" : fmt(v[p.i] / 1e6, 2) + "m players") + " \u00b7 " + fmt(P[pgames + "_games"][p.i]) + " games"; };
+  if (!yoy) o.scales.y.beginAtZero = true;
+  charts.pl = new Chart($("pl-chart"), {type: yoy ? "bar" : "line", data: {datasets: [ds]}, options: o, plugins: yoy ? [zeroLine] : []});
+  $("pl-title").textContent = "Steam players, " + (pgames === "top100" ? "top 100" : "top 1,000") + " games";
+}
+
 /* ---- calendar quarters ---- */
 function quarters() {
   const out = {};
@@ -367,11 +427,11 @@ function setTypes(ts) {
   drawTypes(); renderShare(); renderTable();
 }
 
-function renderAll() { drawTypes(); renderShare(); renderTable(); }
+function renderAll() { drawTypes(); renderShare(); renderTable(); renderPlayers(); }
 
 (async () => {
   try {
-    [D, CARD] = await Promise.all([loadData(), loadCard()]);
+    [D, CARD, PL] = await Promise.all([loadData(), loadCard(), loadPlayers()]);
     const hasCard = !!CARD && REGIONS.every(([, ms]) => ms.every(k => CARD.card.some(c => c.country === k)));
     if (!hasCard) { CARD = null; if (src === "card") { src = "receipt"; setParam("src", src); } }
     SHIFT = D.shift || 364;
@@ -385,7 +445,16 @@ function renderAll() { drawTypes(); renderShare(); renderTable(); }
     $("stamp").textContent = "Data as of " + new Date(Date.parse(D.generated_at)).toISOString().replace("T", " ").slice(0, 16) +
       " UTC · Slice (US) complete to " + nice(Date.parse(ends.US)) + "; Fox (EU5) to " + nice(Date.parse(fox)) +
       (hasCard ? " · Card: Consumer Edge (US) to " + nice(Date.parse(cardEnd(c => c === "US"))) + "; Fable (EU5) to " + nice(Date.parse(cardEnd(c => c !== "US")))
-               : " · Card data unavailable");
+               : " · Card data unavailable") +
+      (PL ? " · Steam players to " + nice(Date.parse(PL.players.end + "T00:00:00Z")) : "");
+    if (PL) {
+      const L = PL.players.live;
+      $("pl-live").textContent = "Live: " + fmt(L.players / 1e6, 2) + "m players across " + fmt(L.games) + " polled games at " +
+        L.slot.slice(11, 16) + " UTC " + nice(Date.parse(L.slot + ":00Z")) + " (our own 30-minute polling of the top games, from " + nice(Date.parse(L.since + "T00:00:00Z")) + ").";
+      seg2("pl-games", PGAMES_OPTS, pgames, v => { pgames = v; setParam("pgames", v); renderPlayers(); });
+      seg2("pl-mode", MODE_OPTS, pmode, v => { pmode = v; setParam("pmode", v); renderPlayers(); });
+      seg2("pl-hist", PHIST_OPTS, phist, v => { phist = v; setParam("phist", v); renderPlayers(); });
+    } else $("pl-card").hidden = true;
     $("pg-types").addEventListener("change", e => {
       const box = e.target.closest("[data-t]"); if (!box) return;
       const next = box.checked ? types.concat(box.dataset.t) : types.filter(k => k !== box.dataset.t);
@@ -401,7 +470,7 @@ function renderAll() { drawTypes(); renderShare(); renderTable(); }
     seg2("sh-hist", HIST_OPTS, shist, v => { shist = v; setParam("shist", v); renderShare(); });
     seg2("qt-view", [["yoy", "Y/Y"], ["share", "Share"]], qview, v => { qview = v; setParam("qview", v); renderTable(); });
     renderAll();
-    onThemeChange(() => { renderShare(); });
+    onThemeChange(() => { renderShare(); renderPlayers(); });
     if (!window.Chart) banner("The chart library could not load; the quarter table below still shows the figures.", "bad");
   } catch (err) {
     banner("Could not load or read the data: " + err.message, "bad");
