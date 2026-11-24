@@ -13,9 +13,10 @@ Revisions: each projected month's y/y re-estimated at every earlier weekly captu
 (build_monthly on the data as it stood then), charted for the last REVISION_MONTHS months and listed
 under each month in the summary.
 
-Quarterly: the portal's model, run unchanged from the vendored `portal_model.py` (chain-ladder
-gross-up of months >= 21 days past month-end, partial quarters at quarter-to-date growth, / trailing
-4-quarter capture rate, y/y vs reported). The range scales each ready month by its monthly bounds.
+Quarterly: the portal's model from the vendored `portal_model.py`, fed the monthly projections in
+place of its chain-ladder gross-up (months >= 21 days past month-end, partial quarters at
+quarter-to-date growth, / trailing 4-quarter capture rate, y/y vs reported), so it agrees with the
+monthly lines. The range scales each ready month by its monthly bounds.
 A quarter gets no estimate until one of its months is 21 days past month-end.
 
 Hiring: Zillow mortgage job postings per month (Revelio Indeed), charted only on the first weekly
@@ -199,8 +200,14 @@ def build_revisions(data, mo):
 # ---- quarterly: the portal model --------------------------------------------------------------
 
 def build_quarterly(data, mo, asof):
-    payload = {"generated_at": asof.isoformat(), "monthly": data["monthly"],
-               "vintages": data["vintages"], "backtest": data["backtest"]}
+    # Months as the monthly projection grosses them up, so a quarter of ready months adds up to the
+    # monthly lines. With no vintages the portal's chain-ladder factor is 1, so it uses these as is;
+    # its 21-day readiness still comes from each month's capture age.
+    proj = mo.proj[mo.proj.notna()]
+    monthly = [dict(r, TOTAL_LOANS_VOLUME=float(proj[pd.Period(r["MONTH"], freq="M")]))
+               if pd.Period(r["MONTH"], freq="M") in proj.index else r for r in data["monthly"]]
+    payload = {"generated_at": asof.isoformat(), "monthly": monthly,
+               "vintages": [], "backtest": data["backtest"]}
     rows, MA = pm.build_model(payload)
     ma = MA.get("Z", {})
     qt = pd.DataFrame(rows["Z"])
@@ -307,7 +314,7 @@ def chart_quarterly(qt, path, asof):
     ax.axhline(0, color=MUTED, lw=1)
 
     est = qt.EST_YOY.to_numpy(float)
-    ax.plot(x, est, color=BLUE, lw=2, marker="o", ms=6, label="Cotality estimate (portal model, out-of-sample)")
+    ax.plot(x, est, color=BLUE, lw=2, marker="o", ms=6, label="Cotality estimate (monthly fill-rate projections, out-of-sample)")
     live = np.isnan(qt.ACT_YOY.to_numpy(float)) & ~np.isnan(est)
     ax.errorbar(x[live], est[live], yerr=[est[live] - qt.EST_YOY_LO[live], qt.EST_YOY_HI[live] - est[live]],
                 fmt="none", ecolor=BLUE, capsize=5, lw=1.5)
