@@ -14,10 +14,10 @@ Revisions: each projected month's y/y re-estimated at every earlier weekly captu
 under each month in the summary.
 
 Quarterly: the portal's model from the vendored `portal_model.py`, fed the monthly projections in
-place of its chain-ladder gross-up (months >= 21 days past month-end, partial quarters at
+place of its chain-ladder gross-up (months captured after month-end, partial quarters at
 quarter-to-date growth, / trailing 4-quarter capture rate, y/y vs reported), so it agrees with the
 monthly lines. The range scales each ready month by its monthly bounds.
-A quarter gets no estimate until one of its months is 21 days past month-end.
+A quarter gets no estimate until one of its months has ended (QUARTER_MIN_DAY).
 
 Hiring: Zillow mortgage job postings per month (Revelio Indeed), charted only on the first weekly
 run after a new Revelio load (BATCH_ID timestamp within HIRING_NEW_DAYS before the run), so each
@@ -46,6 +46,7 @@ import portal_model as pm  # noqa: E402
 
 MAX_DAY = 120
 MIN_DAY = -7              # first estimate: a capture no more than 7 days before month-end
+QUARTER_MIN_DAY = 1       # a month counts in its quarter from the first capture after month-end
 SHOW_MONTHS = 24
 SHOW_QUARTERS = 8
 REFS = (4, 3, 2)          # m-4..m-2
@@ -202,13 +203,17 @@ def build_revisions(data, mo):
 def build_quarterly(data, mo, asof):
     # Months as the monthly projection grosses them up, so a quarter of ready months adds up to the
     # monthly lines. With no vintages the portal's chain-ladder factor is 1, so it uses these as is;
-    # its 21-day readiness still comes from each month's capture age.
+    # its readiness (FILL_MIN_AGE, 21 days) is lowered to QUARTER_MIN_DAY for this call.
     proj = mo.proj[mo.proj.notna()]
     monthly = [dict(r, TOTAL_LOANS_VOLUME=float(proj[pd.Period(r["MONTH"], freq="M")]))
                if pd.Period(r["MONTH"], freq="M") in proj.index else r for r in data["monthly"]]
     payload = {"generated_at": asof.isoformat(), "monthly": monthly,
                "vintages": [], "backtest": data["backtest"]}
-    rows, MA = pm.build_model(payload)
+    keep, pm.FILL_MIN_AGE = pm.FILL_MIN_AGE, QUARTER_MIN_DAY
+    try:
+        rows, MA = pm.build_model(payload)
+    finally:
+        pm.FILL_MIN_AGE = keep
     ma = MA.get("Z", {})
     qt = pd.DataFrame(rows["Z"])
     qt = qt[qt.MONTHS_DONE > 0].tail(SHOW_QUARTERS).copy()
@@ -232,9 +237,9 @@ def build_quarterly(data, mo, asof):
                 sh += v
         lo.append(sl), hi.append(sh)
     qt["G_LO"], qt["G_HI"] = lo, hi
-    # No estimate until at least one of the quarter's months is FILL_MIN_AGE days past month-end
+    # No estimate until at least one of the quarter's months has ended
     # (the portal would otherwise carry trailing 3-month growth forward).
-    qt["FIRST_READY"] = [str(pm.month_end(q[0]) + timedelta(days=pm.FILL_MIN_AGE)) for q in qt.QMONTHS]
+    qt["FIRST_READY"] = [str(pm.month_end(q[0]) + timedelta(days=QUARTER_MIN_DAY)) for q in qt.QMONTHS]
     qt.loc[qt.READY_N == 0, ["EST", "EST_YOY", "G_LO", "G_HI"]] = None
     pyrep = {r["PERIOD"]: r["REPORTED"] for r in rows["Z"]}
     prev = [pyrep.get(f"{int(p[:4]) - 1}{p[4:]}") for p in qt.PERIOD]
@@ -400,7 +405,7 @@ def summary(mo, qt, asof, h=None, rv=None):
     for p, r in qt[qt.ACT_YOY.isna()].iterrows():
         cons = f" vs consensus {r.CONS_YOY:+.1%}" if not np.isnan(r.CONS_YOY) else ""
         if r.READY_N == 0:
-            lines.append(f"*{p}*: no estimate until {r.FIRST_READY} (first month 21 days past month-end){cons}")
+            lines.append(f"*{p}*: no estimate until {r.FIRST_READY} (first capture after its first month ends){cons}")
             continue
         basis = "all 3 months" if r.READY_N == 3 else f"{r.READY_MONTHS} only"
         lines.append(f"*{p}* ({basis}): {r.EST_YOY:+.1%} y/y (range {r.EST_YOY_LO:+.1%} to {r.EST_YOY_HI:+.1%}){cons}")
